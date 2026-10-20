@@ -14,6 +14,25 @@ export const FR_RULES = {
   quickTestRentShare: 0.7,
 } as const;
 
+/** Income tax on rents, long-term rental (KPI_SPEC D13). Check each finance law. */
+export const TAX_RULES = {
+  /** Prélèvements sociaux on property income. To verify each year (LFSS changes). */
+  socialRate: 0.172,
+  marginalRates: [0, 0.11, 0.3, 0.41, 0.45],
+  microFoncierAllowance: 0.3,
+  microFoncierCeiling: 15_000,
+  /** Long-term furnished rental (non-tourist). */
+  microBicAllowance: 0.5,
+  microBicCeiling: 77_700,
+  /** Real regime, unfurnished: a deficit (excluding interest) offsets other income up to this amount. */
+  deficitFoncierCap: 10_700,
+  /** LMNP réel: land is not depreciable; building, furniture and works over these durations. */
+  landShare: 0.15,
+  buildingYears: 30,
+  furnitureYears: 7,
+  worksYears: 15,
+} as const;
+
 /** Prefill values, all editable in the simulator. */
 export const DEFAULTS = {
   downPaymentShare: 0.1,

@@ -12,8 +12,8 @@
 - [ ] 007 Scheduled runs (Task Scheduler, upstream change check) + run reports
 - [ ] 008 Browser extension (WXT) annotating listing pages
 - [ ] 009 Expo mobile build (iOS/Android)
-- [ ] 010 Tax regimes + IRR (D13, D14), BRRRR (D16)
-- [ ] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
-- [ ] 012 Property analysis dashboard: verdict + price + rent + money + risks + area for one property (design: docs/features/012-property-dashboard/spec.md; needs 004 and 011)
+- [ ] 010 Tax regimes + IRR (D13, D14), BRRRR (D16)  (D13 first-year tax comparison done; IRR and BRRRR pending)
+- [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
+- [x] 012 Property analysis dashboard: verdict + price + rent + money + risks + area for one property (design: docs/features/012-property-dashboard/spec.md; needs 004 and 011)
 
 Priority after 004: 011 prerequisites (coordinates) → 011 → 012; 005–010 fit around them.

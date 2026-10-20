@@ -4,11 +4,13 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { KpiTile } from '@/components/kpi-tile';
 import { NumberField, parseNumber } from '@/components/number-field';
+import { Chip } from '@/components/segment-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { analyzeDeal, type DealInput, type MarketReference } from '@/core-kpi/deal';
-import { DEFAULTS, FR_RULES } from '@/core-kpi/rules';
+import { DEFAULTS, FR_RULES, TAX_RULES } from '@/core-kpi/rules';
+import { compareTaxRegimes, type TaxRegime } from '@/core-kpi/tax';
 import { loadPlace } from '@/data/api';
 import { formatDecimal, formatEuros, formatEurosPerM2, formatPercent, formatSignedPercent } from '@/data/format';
 import { latestFullYear, type Segment, yieldFor } from '@/data/select';
@@ -94,6 +96,13 @@ const Section = ({ title, children }: SectionProps) => (
   </View>
 );
 
+const REGIME_LABELS: Record<TaxRegime, string> = {
+  micro_foncier: 'Nu · micro-foncier',
+  reel_foncier: 'Nu · réel',
+  lmnp_micro: 'Meublé LMNP · micro-BIC',
+  lmnp_reel: 'Meublé LMNP · réel',
+};
+
 const MARKET_LABELS = { below: 'sous la fourchette du marché', within: 'dans la fourchette du marché', above: 'au-dessus de la fourchette du marché' };
 
 export default function SimulatorScreen() {
@@ -111,6 +120,7 @@ export default function SimulatorScreen() {
   const [form, setForm] = useState<Form>(DEFAULT_FORM);
   const [isNewBuild, setIsNewBuild] = useState(false);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
+  const [marginalRate, setMarginalRate] = useState(0.3);
 
   useEffect(() => {
     if (!params.level || !params.code) {
@@ -137,7 +147,12 @@ export default function SimulatorScreen() {
     };
   }, [params.level, params.code, params.type, params.rooms, params.price, params.surface, params.rent]);
 
-  const result = useMemo(() => analyzeDeal(toInput(form, isNewBuild), prefill?.market), [form, isNewBuild, prefill]);
+  const input = useMemo(() => toInput(form, isNewBuild), [form, isNewBuild]);
+  const result = useMemo(() => analyzeDeal(input, prefill?.market), [input, prefill]);
+  const taxes = useMemo(() => compareTaxRegimes(input, result, marginalRate), [input, result, marginalRate]);
+  const bestRegime = taxes
+    .filter((tax) => tax.eligible)
+    .reduce((best, tax) => (tax.cashFlowAfterTaxMonthly > best.cashFlowAfterTaxMonthly ? tax : best));
   const field = (key: keyof Form) => ({ value: form[key], onChange: (text: string) => setForm({ ...form, [key]: text }) });
   const cashFlowColor = result.cashFlowMonthly >= 0 ? 'positive' : 'negative';
 
@@ -201,6 +216,51 @@ export default function SimulatorScreen() {
           </ThemedText>
         )}
 
+        <View style={styles.section}>
+          <ThemedText type="smallBold">Après impôt, première année</ThemedText>
+          <View style={styles.rateRow}>
+            <ThemedText type="small" themeColor="textSecondary">
+              Votre tranche d&apos;imposition (TMI) :
+            </ThemedText>
+            {TAX_RULES.marginalRates.map((rate) => (
+              <Chip key={rate} label={formatPercent(rate)} selected={marginalRate === rate} onPress={() => setMarginalRate(rate)} />
+            ))}
+          </View>
+          <View style={[styles.table, { borderColor: theme.border }]}>
+            {taxes.map((tax) => (
+              <View key={tax.regime} style={styles.tableRow}>
+                <View style={styles.tableLabel}>
+                  <ThemedText type="small">
+                    {REGIME_LABELS[tax.regime]}
+                    {tax.regime === bestRegime.regime ? ' ★' : ''}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+                    {!tax.eligible
+                      ? 'Non accessible : loyers au-dessus du plafond'
+                      : tax.deficit > 0
+                        ? `Déficit ${formatEuros(tax.deficit)} (imputable sur vos revenus jusqu'à ${formatEuros(TAX_RULES.deficitFoncierCap)}, hors intérêts)`
+                        : tax.carriedDepreciation > 0
+                          ? `Amortissement reporté ${formatEuros(tax.carriedDepreciation)}`
+                          : `Impôt ${formatEuros(tax.totalTax)} / an`}
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  type="smallBold"
+                  themeColor={!tax.eligible ? 'textSecondary' : tax.cashFlowAfterTaxMonthly >= 0 ? 'positive' : 'negative'}>
+                  {tax.eligible ? `${formatEuros(tax.cashFlowAfterTaxMonthly)} / mois` : '—'}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+            Cash-flow après impôt sur le revenu et prélèvements sociaux ({formatPercent(TAX_RULES.socialRate)}). Même loyer
+            nu ou meublé ; en meublé le loyer est souvent plus élevé. LMNP réel : amortissement du bâti sur{' '}
+            {TAX_RULES.buildingYears} ans (terrain {formatPercent(TAX_RULES.landShare)} exclu), des meubles sur{' '}
+            {TAX_RULES.furnitureYears} ans ; depuis 2025, les amortissements sont réintégrés dans la plus-value à la revente.
+            Comptabilité LMNP réel : ~300 à 600 € / an non comptés.
+          </ThemedText>
+        </View>
+
         <Section title="Le bien">
           <NumberField label="Prix d'achat" unit="€" {...field('price')} />
           <NumberField label="Surface" unit="m²" {...field('surfaceM2')} />
@@ -246,8 +306,8 @@ export default function SimulatorScreen() {
         </Section>
 
         <ThemedText type="small" themeColor="textSecondary">
-          Avant impôt : la fiscalité (micro-foncier, réel, LMNP) arrive dans une prochaine étape. Règles françaises
-          vérifiées le {FR_RULES.checkedOn}. Simulation indicative, pas un conseil d’investissement.
+          Règles françaises vérifiées le {FR_RULES.checkedOn}. Simulation indicative de première année, pas un conseil
+          d’investissement ni un conseil fiscal.
         </ThemedText>
       </ScrollView>
     </ThemedView>
@@ -262,4 +322,9 @@ const styles = StyleSheet.create({
   section: { gap: Spacing.two },
   fields: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   toggle: { flexBasis: '100%', borderWidth: 1, borderRadius: 10, padding: Spacing.three },
+  rateRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
+  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: Spacing.three },
+  tableRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.two },
+  tableLabel: { flex: 1, gap: 2 },
+  note: { fontSize: 12, lineHeight: 16 },
 });
