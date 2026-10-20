@@ -62,3 +62,41 @@ def check_clean(con: duckdb.DuckDBPyConnection) -> list[Check]:
         ("one row per mutation", duplicates == 0, f"duplicates={duplicates}"),
         ("no null commune", null_communes == 0, f"nulls={null_communes}"),
     ]
+
+
+# Gross yield bands (12 × asking rent / median price) for apartments, latest full year.
+# Paris is known for ~3–4.5 %, the national figure for ~5–7 %.
+YIELD_BANDS = {
+    ("commune", "75056"): (0.025, 0.05),
+    ("france", "FR"): (0.04, 0.09),
+}
+MIN_RENT_COVERAGE = 0.95
+
+
+def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    latest = con.execute(
+        "SELECT max(period) FROM kpi_yield WHERE period_type = 'year' AND period IN "
+        "(SELECT period FROM kpi_price WHERE period_type = 'year' AND NOT is_partial)"
+    ).fetchone()[0]
+    if latest is None:
+        return [("yield period", False, "no complete year matches the rent edition")]
+    checks = []
+    for (level, code), (low, high) in YIELD_BANDS.items():
+        row = con.execute(
+            """SELECT gross_yield FROM kpi_yield WHERE geo_level = ? AND geo_code = ?
+               AND period = ? AND property_type = 'apartment' AND rooms_bucket = 'all'""",
+            [level, code, latest],
+        ).fetchone()
+        ok = row is not None and low <= row[0] <= high
+        detail = "missing" if row is None else f"yield={row[0]:.2%} band=[{low:.1%},{high:.1%}]"
+        checks.append((f"yield {code} {latest}", ok, detail))
+    # share of published commune price cells that found a rent
+    coverage = con.execute(
+        f"""SELECT count(y.geo_code)::DOUBLE / count(*) FROM kpi_price p
+            LEFT JOIN kpi_yield y USING (geo_level, geo_code, period, property_type, rooms_bucket)
+            WHERE p.geo_level = 'commune' AND p.period = '{latest}' AND p.n_sales >= 10
+              -- ANIL publishes rents by rooms for apartments only
+              AND (p.property_type = 'apartment' OR (p.property_type = 'house' AND p.rooms_bucket = 'all'))"""
+    ).fetchone()[0]
+    checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
+    return checks

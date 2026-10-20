@@ -35,6 +35,13 @@ Geo levels: `commune` (INSEE code, 5 chars), `arrondissement` (Paris/Lyon/Marsei
 - Days-on-market, listing stock → not in open data; dropped.
 - Predicted rent per m² by ML → *Later*; ANIL data is good enough for MVP.
 
+### Implementation notes (M8–M10, done)
+- Source: latest ANIL "Carte des loyers" edition (2025, Q3-2025 listings, **charges included**), auto-discovered on data.gouv.fr. Editions are not comparable over time, so only the latest is used, and only paired with price periods ≥ its year (2025, 2025-H1/H2, 2026-H1).
+- Segments: ANIL gives apartment (all), apartment 1–2 rooms, 3+ rooms, house. The 1–2 rooms rent is applied to both T1 and T2, and the 3+ rent to T3, T4 and T5+. So T1 yields are slightly understated: a T1 rents for more per m² than a T2.
+- Paris/Lyon/Marseille: ANIL publishes arrondissements only; the city rent is the listing-weighted mean. Département, région and France rents are commune rents weighted by sales in the segment.
+- `rent_source = 'maille'` means the commune has too few listings and borrows the rent of a group of neighbouring communes: show it as lower confidence.
+- A very high gross yield (> 10 %) usually signals risk (vacancy, degraded condominiums, falling population), not a bargain. That's why M11–M13 and the M17 score matter.
+
 ## 2. Deal KPIs (on the fly, client side, pure functions in `packages/core-kpi`)
 
 Inputs: price, notary fees (default 7.5% old / 2.5% new), works, furniture, rent, charges, taxe foncière (default M15), PNO insurance, management %, vacancy (default from M11, min 1 month/yr), loan (rate, years, down payment, insurance), tax regime, TMI.

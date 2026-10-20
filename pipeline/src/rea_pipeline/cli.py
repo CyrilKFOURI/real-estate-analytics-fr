@@ -12,9 +12,10 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, ingest, marts, paths, refs, validate
+from . import clean, ingest, marts, paths, refs, rents, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
+PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
 
 
 class GateFailed(Exception):
@@ -46,6 +47,7 @@ def build_dvf(skip_ingest: bool) -> int:
         if not skip_ingest:
             stage("S1 ingest refs", ingest.ingest_refs())
             stage("S1 ingest dvf", ingest.ingest_dvf())
+            stage("S1 ingest rents", rents.ingest_rents())
         refs.build_commune_map(con, ingest.communes_file())
         stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
 
@@ -65,10 +67,19 @@ def build_dvf(skip_ingest: bool) -> int:
             report,
         )
 
-        # publish atomically: write next to the target, then rename over it
-        staging = PUBLISHED_PRICE_KPIS.with_name("kpi_price.next.parquet")
-        stage("publish", marts.export_published(con, staging))
-        staging.replace(PUBLISHED_PRICE_KPIS)
+        vintage = rents.edition()
+        rents.load_rents(con, rents.RENTS_DIR / str(vintage), vintage)
+        rents.build_yield_kpis(con)
+        stage("S3 yields", con.execute("SELECT count(*) FROM kpi_yield").fetchone()[0])
+        _gate("V3", validate.check_yields(con), report)
+
+        # publish atomically: write every file next to its target, then rename them all
+        price_next = PUBLISHED_PRICE_KPIS.with_name("kpi_price.next.parquet")
+        yield_next = PUBLISHED_YIELD_KPIS.with_name("kpi_yield.next.parquet")
+        stage("publish prices", marts.export_published(con, price_next))
+        stage("publish yields", rents.export_published(con, yield_next, marts.MIN_PUBLISHED_SALES))
+        price_next.replace(PUBLISHED_PRICE_KPIS)
+        yield_next.replace(PUBLISHED_YIELD_KPIS)
         report["status"] = "success"
     except GateFailed as failed:
         report["status"] = f"failed at gate {failed}"
@@ -87,14 +98,15 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="run the full DVF pipeline S0→publish")
     build.add_argument("--skip-ingest", action="store_true", help="reuse files already in data/raw")
-    sub.add_parser("ingest", help="S1 only: download refs + DVF")
+    sub.add_parser("ingest", help="S1 only: download refs, DVF and rents")
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
     args = parser.parse_args()
 
     if args.command == "build":
         sys.exit(build_dvf(args.skip_ingest))
     if args.command == "ingest":
-        print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf()], indent=2))
+        print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents()],
+                         indent=2, default=str))
     if args.command == "clean-runs":
         for run in paths.RUNS.glob("*"):
             manifest = run / "manifest.json"
