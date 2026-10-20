@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, ingest, insee, marts, paths, publish, refs, rents, validate
+from . import clean, geo, ingest, insee, marts, paths, publish, refs, rents, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
@@ -49,10 +49,15 @@ def build_dvf(skip_ingest: bool) -> int:
         if not skip_ingest:
             stage("S1 ingest refs", ingest.ingest_refs())
             stage("S1 ingest dvf", ingest.ingest_dvf())
+            stage("S1 ingest geo-dvf", geo.ingest_geo_dvf())
             stage("S1 ingest rents", rents.ingest_rents())
             stage("S1 ingest insee", insee.ingest_insee())
         refs.build_commune_map(con, ingest.communes_file())
         stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
+
+        geo.build_location_tables(con, geo.geo_dvf_files())
+        stage("S0 locations", con.execute("SELECT count(*) FROM section_point").fetchone()[0])
+        geo.export_location_tables(con, paths.MARTS)
 
         clean.load_raw(con, ingest.dvf_files())
         stage("S2 load raw", con.execute("SELECT count(*) FROM dvf_raw").fetchone()[0])
@@ -112,6 +117,7 @@ def main() -> None:
     sub.add_parser("ingest", help="S1 only: download refs, DVF, rents and INSEE")
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
     sub.add_parser("sync-app", help="copy data/serve into apps/app/public/data")
+    sub.add_parser("locations", help="rebuild and export section/commune points from geo-DVF only")
     args = parser.parse_args()
 
     if args.command == "build":
@@ -120,6 +126,11 @@ def main() -> None:
         print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents(),
                           insee.ingest_insee()],
                          indent=2, default=str))
+    if args.command == "locations":
+        con = duckdb.connect()
+        geo.build_location_tables(con, geo.geo_dvf_files())
+        geo.export_location_tables(con, paths.MARTS)
+        print(f"Exported section_point and commune_point to {paths.MARTS}")
     if args.command == "sync-app":
         publish.sync_app(APP_PUBLIC_DATA)
         print(f"Copied {paths.SERVE} -> {APP_PUBLIC_DATA}")

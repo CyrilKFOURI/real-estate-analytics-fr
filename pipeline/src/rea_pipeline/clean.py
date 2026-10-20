@@ -1,34 +1,29 @@
 """S2: DVF cleaning (docs/PIPELINE_RUN_SPEC.md §3).
 
-Output table dvf_sales: one row per kept mutation = one single-dwelling residential sale.
+Output table dvf_sales: one row per kept mutation = one single-dwelling residential sale,
+with the characteristics the price model needs (docs/features/011-price-check-ml/spec.md §3).
 """
 from pathlib import Path
 
 import duckdb
 
-DVF_COLUMNS = {
-    "id_mutation": "VARCHAR",
-    "date_mutation": "DATE",
-    "nature_mutation": "VARCHAR",
-    "valeur_fonciere": "DOUBLE",
-    "code_commune": "VARCHAR",
-    "id_parcelle": "VARCHAR",
-    "type_local": "VARCHAR",
-    "surface_reelle_bati": "DOUBLE",
-    "nombre_pieces_principales": "DOUBLE",
-    "longitude": "DOUBLE",
-    "latitude": "DOUBLE",
-}
+from .geo import SECTION_KEY_LENGTH
+
 DWELLING_TYPES = ("Appartement", "Maison")
+SALE_NATURES = {"Vente": False, "Vente en l'état futur d'achèvement": True}  # nature -> is_new_build
 MIN_SURFACE_M2 = 9
 MIN_PRICE_EUR = 1_000
+
+
+def _decimal(column: str) -> str:
+    return f"TRY_CAST(replace(\"{column}\", ',', '.') AS DOUBLE)"
 
 
 def load_raw(con: duckdb.DuckDBPyConnection, files: list[Path]) -> None:
     """Load official DVF files (data.gouv.fr 'ValeursFoncieres-*.txt') into table dvf_raw.
 
     The official format has no mutation id, unpadded commune codes, French decimals
-    ("130000,00") and dd/mm/yyyy dates; this normalises it to DVF_COLUMNS.
+    ("130000,00") and dd/mm/yyyy dates; this normalises them.
     """
     file_list = ", ".join(f"'{f.as_posix()}'" for f in files)
     commune = (
@@ -43,15 +38,18 @@ def load_raw(con: duckdb.DuckDBPyConnection, files: list[Path]) -> None:
                           "Code departement", "Code commune", "No disposition")) AS id_mutation,
             TRY_CAST(strptime("Date mutation", '%d/%m/%Y') AS DATE) AS date_mutation,
             "Nature mutation" AS nature_mutation,
-            TRY_CAST(replace("Valeur fonciere", ',', '.') AS DOUBLE) AS valeur_fonciere,
+            {_decimal("Valeur fonciere")} AS valeur_fonciere,
             {commune} AS code_commune,
             {commune} || lpad(coalesce("Prefixe de section", ''), 3, '0')
                 || lpad("Section", 2, '0') || lpad("No plan", 4, '0') AS id_parcelle,
+            "1er lot" AS lot_1,
             "Type local" AS type_local,
-            TRY_CAST(replace("Surface reelle bati", ',', '.') AS DOUBLE) AS surface_reelle_bati,
+            {_decimal("Surface reelle bati")} AS surface_reelle_bati,
+            {_decimal("Surface Carrez du 1er lot")} AS surface_carrez,
             TRY_CAST("Nombre pieces principales" AS DOUBLE) AS nombre_pieces_principales,
-            NULL::DOUBLE AS longitude,
-            NULL::DOUBLE AS latitude
+            TRY_CAST("Nombre de lots" AS INTEGER) AS nombre_lots,
+            "Nature culture" AS nature_culture,
+            {_decimal("Surface terrain")} AS surface_terrain
         FROM read_csv([{file_list}], header = true, all_varchar = true, union_by_name = true,
                       delim = '|', quote = '')
         """
@@ -59,15 +57,30 @@ def load_raw(con: duckdb.DuckDBPyConnection, files: list[Path]) -> None:
 
 
 def build_sales(con: duckdb.DuckDBPyConnection) -> None:
-    """Create table dvf_sales from dvf_raw + commune_map."""
+    """Create table dvf_sales from dvf_raw + commune_map + section_point + commune_point."""
     dwellings = ", ".join(f"'{t}'" for t in DWELLING_TYPES)
+    natures = ", ".join("'" + n.replace("'", "''") + "'" for n in SALE_NATURES)
+    new_build = " ".join(
+        "WHEN '" + n.replace("'", "''") + f"' THEN {str(v).lower()}" for n, v in SALE_NATURES.items()
+    )
     con.execute(
         f"""
         CREATE OR REPLACE TABLE dvf_sales AS
-        WITH per_mutation AS (
+        WITH sales_rows AS (
+            SELECT * FROM dvf_raw WHERE nature_mutation IN ({natures})
+        ),
+        -- land: rows repeat per premises, so count each (parcel, land type, surface) once
+        land AS (
+            SELECT id_mutation, sum(surface_terrain) AS land_m2
+            FROM (SELECT DISTINCT id_mutation, id_parcelle, nature_culture, surface_terrain
+                  FROM sales_rows WHERE surface_terrain > 0)
+            GROUP BY id_mutation
+        ),
+        per_mutation AS (
             SELECT
                 id_mutation,
                 min(date_mutation) AS date_mutation,
+                any_value(CASE nature_mutation {new_build} END) AS is_new_build,
                 -- the sale price is repeated on every row of a mutation: take it once
                 min(valeur_fonciere) AS price,
                 max(valeur_fonciere) AS price_max,
@@ -78,14 +91,16 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
                                      nombre_pieces_principales) END) AS n_dwellings,
                 count(*) FILTER (WHERE type_local IS NOT NULL
                                  AND type_local NOT IN ({dwellings}, 'Dépendance')) AS n_other_premises,
+                count(DISTINCT CASE WHEN type_local = 'Dépendance'
+                      THEN concat_ws('|', id_parcelle, lot_1) END) AS n_dependencies,
                 any_value(type_local) FILTER (WHERE type_local IN ({dwellings})) AS property_type,
                 max(surface_reelle_bati) FILTER (WHERE type_local IN ({dwellings})) AS surface_m2,
+                max(surface_carrez) FILTER (WHERE type_local IN ({dwellings})) AS surface_carrez_m2,
                 max(nombre_pieces_principales) FILTER (WHERE type_local IN ({dwellings})) AS rooms,
-                any_value(code_commune) AS code_commune_raw,
-                avg(longitude) AS longitude,
-                avg(latitude) AS latitude
-            FROM dvf_raw
-            WHERE nature_mutation = 'Vente'
+                max(nombre_lots) AS n_lots,
+                any_value(id_parcelle) FILTER (WHERE type_local IN ({dwellings})) AS id_parcelle,
+                any_value(code_commune) AS code_commune_raw
+            FROM sales_rows
             GROUP BY id_mutation
         )
         SELECT
@@ -93,20 +108,33 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
             m.date_mutation,
             year(m.date_mutation) AS year,
             CASE WHEN month(m.date_mutation) <= 6 THEN 1 ELSE 2 END AS half,
+            m.is_new_build,
             m.price,
             m.surface_m2,
             m.price / m.surface_m2 AS price_m2,
             CASE m.property_type WHEN 'Appartement' THEN 'apartment' ELSE 'house' END AS property_type,
             CAST(m.rooms AS INTEGER) AS rooms,
+            m.surface_carrez_m2,
+            coalesce(l.land_m2, 0) AS land_m2,
+            m.n_dependencies,
+            m.n_lots,
+            m.id_parcelle,
+            left(m.id_parcelle, {SECTION_KEY_LENGTH}) AS section,
             coalesce(c.code_commune, m.code_commune_raw) AS code_commune,
             c.code_arrondissement,
             CASE WHEN m.code_commune_raw LIKE '97%' THEN left(m.code_commune_raw, 3)
                  ELSE left(m.code_commune_raw, 2) END AS code_departement,
             c.region AS code_region,
-            m.longitude,
-            m.latitude
+            -- section point for every sale (see geo.py), commune point as fallback
+            coalesce(s.longitude, cp.longitude) AS longitude,
+            coalesce(s.latitude, cp.latitude) AS latitude,
+            CASE WHEN s.section IS NOT NULL THEN 'section'
+                 WHEN cp.code IS NOT NULL THEN 'commune' END AS location_precision
         FROM per_mutation m
         LEFT JOIN commune_map c ON c.code = m.code_commune_raw
+        LEFT JOIN land l USING (id_mutation)
+        LEFT JOIN section_point s ON s.section = left(m.id_parcelle, {SECTION_KEY_LENGTH})
+        LEFT JOIN commune_point cp ON cp.code = m.code_commune_raw
         WHERE m.n_dwellings = 1
           AND m.n_other_premises = 0
           AND m.n_communes = 1

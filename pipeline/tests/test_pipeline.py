@@ -10,7 +10,8 @@ from rea_pipeline import clean, marts, refs
 
 HEADER = ["No disposition", "Date mutation", "Nature mutation", "Valeur fonciere",
           "Code departement", "Code commune", "Prefixe de section", "Section", "No plan",
-          "Type local", "Surface reelle bati", "Nombre pieces principales"]
+          "Type local", "Surface reelle bati", "Nombre pieces principales", "1er lot",
+          "Surface Carrez du 1er lot", "Nombre de lots", "Nature culture", "Surface terrain"]
 
 COMMUNES = [
     {"code": "01001", "type": "commune-actuelle", "nom": "A", "departement": "01", "region": "84"},
@@ -23,12 +24,14 @@ COMMUNES = [
 ]
 
 
-def row(price, commune, type_local, surface, rooms=2, nature="Vente", date="01/03/2024", plan="1"):
+def row(price, commune, type_local, surface, rooms=2, nature="Vente", date="01/03/2024", plan="1",
+        lot="", carrez="", lots=1, culture="", land=""):
     """One line of an official DVF file: unpadded commune code, French decimals, dd/mm/yyyy."""
     dep = commune[:3] if commune.startswith("97") else commune[:2]
     com = str(int(commune[len(dep):]))
-    surface = "" if surface is None else str(surface).replace(".", ",")
-    return ["000001", date, nature, f"{price},00", dep, com, "", "AB", plan, type_local, surface, rooms]
+    french = lambda v: "" if v in (None, "") else str(v).replace(".", ",")
+    return ["000001", date, nature, f"{price},00", dep, com, "", "AB", plan, type_local,
+            french(surface), rooms, lot, french(carrez), lots, culture, french(land)]
 
 
 # Each test sale has a unique price, used as its key in the assertions.
@@ -53,6 +56,13 @@ ROWS = [
     row(400000, "01001", "Local industriel. commercial ou assimilé", 30),
     # overseas: departement 971 + commune "2" -> 97102; French decimal surface
     row(150000, "97102", "Maison", 75.5, rooms=3, date="15/09/2024"),
+    # house on 2 parcels; land rows repeat per premises: 400 + 100 m², not doubled
+    row(250000, "01001", "Maison", 90, rooms=4, plan="7", culture="S", land=400),
+    row(250000, "01001", "Dépendance", None, plan="7", culture="S", land=400),
+    row(250000, "01001", "Maison", 90, rooms=4, plan="8", culture="J", land=100),
+    # new build (VEFA): kept, flagged
+    row(260000, "01001", "Appartement", 60, rooms=3, nature="Vente en l'état futur d'achèvement",
+        carrez=58.4, lot="12", lots=2),
 ]
 
 
@@ -67,6 +77,11 @@ def con(tmp_path: Path) -> duckdb.DuckDBPyConnection:
         writer.writerows(ROWS)
     connection = duckdb.connect()
     refs.build_commune_map(connection, communes)
+    # section 01001000AB has a known point; Paris only has a commune point; 97102 has none
+    connection.execute("CREATE TABLE section_point AS SELECT '01001000AB' AS section, 5.0 AS longitude, "
+                       "46.0 AS latitude, 13 AS n_parcels")
+    connection.execute("CREATE TABLE commune_point AS SELECT * FROM (VALUES ('01001', 5.1::DOUBLE, 46.1::DOUBLE), "
+                       "('75101', 2.34::DOUBLE, 48.86::DOUBLE)) t(code, longitude, latitude)")
     clean.load_raw(connection, [dvf])
     clean.build_sales(connection)
     return connection
@@ -82,8 +97,24 @@ def sales(con) -> dict[int, tuple]:
 
 
 def test_kept_sales(con):
-    assert set(sales(con)) == {200000, 300000, 500000, 150000}
-    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 4
+    assert set(sales(con)) == {200000, 300000, 500000, 150000, 250000, 260000}
+    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 6
+
+
+def _sale(con, price, columns):
+    return con.execute(f"SELECT {columns} FROM dvf_sales WHERE price = ?", [price]).fetchone()
+
+
+def test_model_features(con):
+    assert _sale(con, 250000, "land_m2, n_dependencies, is_new_build") == (500, 1, False)
+    assert _sale(con, 260000, "is_new_build, surface_carrez_m2, n_lots") == (True, 58.4, 2)
+    assert _sale(con, 200000, "n_dependencies, land_m2") == (1, 0)
+
+
+def test_location_section_then_commune(con):
+    assert _sale(con, 200000, "longitude, latitude, location_precision") == (5.0, 46.0, "section")
+    assert _sale(con, 500000, "longitude, location_precision") == (2.34, "commune")
+    assert _sale(con, 150000, "longitude, location_precision") == (None, None)
 
 
 def test_price_counted_once(con):
@@ -115,8 +146,11 @@ def _add_sales(con, year: int, half: int, price_m2: float, n: int = 12) -> None:
     month = 3 if half == 1 else 9
     for i in range(n):
         con.execute(
-            """INSERT INTO dvf_sales VALUES (?, ?, ?, ?, ?, 50, ?, 'apartment', 2,
-               '01001', NULL, '01', '84', NULL, NULL)""",
+            """INSERT INTO dvf_sales BY NAME
+               SELECT ? AS id_mutation, CAST(? AS DATE) AS date_mutation, ? AS year, ? AS half,
+                      false AS is_new_build, ? AS price, 50 AS surface_m2, ? AS price_m2,
+                      'apartment' AS property_type, 2 AS rooms, '01001' AS code_commune,
+                      '01' AS code_departement, '84' AS code_region""",
             [f"{year}-{half}-{i}", f"{year}-{month:02d}-01", year, half, price_m2 * 50, price_m2],
         )
 

@@ -25,7 +25,8 @@ def build_price_kpis(con: duckdb.DuckDBPyConnection, run_id: str) -> None:
     """Create table kpi_price for every geo level, period and segment."""
     by_level = " UNION ALL ".join(
         f"SELECT '{level}' AS geo_level, {column} AS geo_code, * FROM dvf_sales "
-        f"WHERE {column} IS NOT NULL"
+        # market KPIs describe existing housing: new builds (VEFA) sell ~15–25 % dearer
+        f"WHERE {column} IS NOT NULL AND NOT is_new_build"
         for level, column in GEO_LEVELS.items()
     )
     con.execute(
@@ -33,7 +34,7 @@ def build_price_kpis(con: duckdb.DuckDBPyConnection, run_id: str) -> None:
         CREATE OR REPLACE TABLE kpi_price AS
         WITH coverage AS (
             -- a year is complete only if the release contains both of its halves
-            SELECT year, count(DISTINCT half) = 2 AS is_complete FROM dvf_sales GROUP BY year
+            SELECT year, count(DISTINCT half) = 2 AS is_complete FROM dvf_sales WHERE NOT is_new_build GROUP BY year
         ),
         geo AS ({by_level}),
         periods AS (
