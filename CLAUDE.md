@@ -1,20 +1,22 @@
 # CLAUDE.md
 
 ## Project
-To be completed (one-line description)
+French rental-investment analytics: offline pipeline precomputes market KPIs from open data (DVF, ANIL, INSEE…); web + Expo app and browser extension read only those KPIs.
 
 ## Stack
-To be completed
+Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo + TypeScript (planned). See docs/TRD.md.
 
 ## Commands
-- dev: To be completed
-- build: To be completed
-- test: To be completed
+- build KPIs: `cd pipeline && uv run rea build` (`--skip-ingest` to reuse downloads)
+- download only: `cd pipeline && uv run rea ingest`
+- test: `cd pipeline && uv run pytest -q`
 - lint: To be completed
 - typecheck: To be completed
 
 ## Code structure
-To be completed
+- pipeline/src/rea_pipeline: ingest (S1), refs (S0), clean (S2), marts (S3), validate (gates), cli
+- data/ (gitignored): raw, clean, marts, runs
+- docs/KPI_SPEC.md, docs/PIPELINE_RUN_SPEC.md: what KPIs and how they're run
 
 ## Docs
 | File | Read it when… |
@@ -37,4 +39,5 @@ To be completed
 - Secrets only in .env (never committed)
 
 ## Mistakes not to repeat
-(empty — to enrich as the project goes)
+- DVF repeats the sale price on every row of a mutation: aggregate per id_mutation first.
+- Paris/Lyon/Marseille appear in DVF as arrondissement codes (751xx, 6938x, 132xx).

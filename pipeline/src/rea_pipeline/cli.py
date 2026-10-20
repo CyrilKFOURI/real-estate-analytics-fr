@@ -1,0 +1,102 @@
+"""Command line entry point: `uv run rea <command>` (see docs/PIPELINE_RUN_SPEC.md §6).
+
+Stages run strictly in order S0 → S1 → S2 → V1 → S3 → V2 → publish; any failed gate stops
+the run and leaves the previously published marts untouched.
+"""
+import argparse
+import json
+import shutil
+import sys
+import time
+from datetime import datetime, timezone
+
+import duckdb
+
+from . import clean, ingest, marts, paths, refs, validate
+
+PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
+
+
+class GateFailed(Exception):
+    pass
+
+
+def _gate(name: str, checks: list[validate.Check], report: dict) -> None:
+    report["gates"][name] = [{"check": c, "ok": ok, "detail": d} for c, ok, d in checks]
+    for check, ok, detail in checks:
+        print(f"  [{'OK ' if ok else 'FAIL'}] {check}: {detail}")
+    if not all(ok for _, ok, _ in checks):
+        raise GateFailed(name)
+
+
+def build_dvf(skip_ingest: bool) -> int:
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = paths.RUNS / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    report: dict = {"run_id": run_id, "stages": {}, "gates": {}}
+    started = time.perf_counter()
+
+    def stage(name: str, result) -> None:
+        report["stages"][name] = {"seconds": round(time.perf_counter() - started, 1), "result": result}
+        print(f"[{name}] done at {report['stages'][name]['seconds']}s")
+
+    con = duckdb.connect(str(run_dir / "work.duckdb"))
+    status = 0
+    try:
+        if not skip_ingest:
+            stage("S1 ingest refs", ingest.ingest_refs())
+            stage("S1 ingest dvf", ingest.ingest_dvf())
+        refs.build_commune_map(con, ingest.communes_file())
+        stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
+
+        clean.load_raw(con, ingest.dvf_files())
+        stage("S2 load raw", con.execute("SELECT count(*) FROM dvf_raw").fetchone()[0])
+        clean.build_sales(con)
+        n_sales = clean.export(con, paths.CLEAN / "dvf" / "sales.parquet")
+        stage("S2 clean", n_sales)
+        _gate("V1", validate.check_clean(con), report)
+
+        marts.build_price_kpis(con, run_id)
+        stage("S3 marts", con.execute("SELECT count(*) FROM kpi_price").fetchone()[0])
+        _gate(
+            "V2",
+            validate.check_reference_bands(con)
+            + validate.check_national_drift(con, PUBLISHED_PRICE_KPIS),
+            report,
+        )
+
+        # publish atomically: write next to the target, then rename over it
+        staging = PUBLISHED_PRICE_KPIS.with_name("kpi_price.next.parquet")
+        stage("publish", marts.export_published(con, staging))
+        staging.replace(PUBLISHED_PRICE_KPIS)
+        report["status"] = "success"
+    except GateFailed as failed:
+        report["status"] = f"failed at gate {failed}"
+        print(f"Run stopped: gate {failed} failed; published marts unchanged.", file=sys.stderr)
+        status = 1
+    finally:
+        con.close()
+        (run_dir / "manifest.json").write_text(json.dumps(report, indent=2, default=str))
+        (run_dir / "work.duckdb").unlink(missing_ok=True)
+    print(f"Run {run_id}: {report['status']} — report in {run_dir}")
+    return status
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="rea")
+    sub = parser.add_subparsers(dest="command", required=True)
+    build = sub.add_parser("build", help="run the full DVF pipeline S0→publish")
+    build.add_argument("--skip-ingest", action="store_true", help="reuse files already in data/raw")
+    sub.add_parser("ingest", help="S1 only: download refs + DVF")
+    sub.add_parser("clean-runs", help="delete run folders of failed runs")
+    args = parser.parse_args()
+
+    if args.command == "build":
+        sys.exit(build_dvf(args.skip_ingest))
+    if args.command == "ingest":
+        print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf()], indent=2))
+    if args.command == "clean-runs":
+        for run in paths.RUNS.glob("*"):
+            manifest = run / "manifest.json"
+            if manifest.exists() and json.loads(manifest.read_text()).get("status") != "success":
+                shutil.rmtree(run)

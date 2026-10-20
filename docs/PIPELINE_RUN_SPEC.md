@@ -30,7 +30,7 @@ S4 derived   M9, M10, M17   (need S3 DVF + ANIL + INSEE done)   ─ validation g
 S5 publish   build SQLite + JSON/PMTiles → atomic swap (write to new file, then rename)
 ```
 
-Order is enforced by the runner (`make`/`just` targets or a tiny Python DAG with Prefect-free plain functions); a stage refuses to run if its upstream `_SUCCESS` marker for the same `run_id` is missing.
+Order is enforced by `rea build`, which runs stages sequentially in one process and stops at the first failed gate.
 
 ## 3. DVF cleaning rules (S2) — mandatory
 1. Keep `nature_mutation = 'Vente'` (and VEFA flagged separately).
@@ -61,12 +61,11 @@ A weekly check job only polls upstream metadata (data.gouv.fr API `last_modified
 
 ## 6. Run commands (target)
 ```
-just refs           # S0
-just ingest dvf     # S1 for one source
-just build          # S1→S5 for all sources whose upstream changed
-just build --full   # force full rebuild
-just validate       # V1 + V2 only
-just publish        # S5 only, from existing marts
+cd pipeline
+uv run rea ingest              # S1: refs + DVF, skipped when upstream ETag unchanged
+uv run rea build               # S0→S1→S2→V1→S3→V2→publish (implemented for DVF)
+uv run rea build --skip-ingest # rebuild from files already downloaded
+uv run rea clean-runs          # delete reports of failed runs
 ```
 First full run estimate on the laptop: ~30–60 min (DVF ≈ 1 GB gz, DPE the slowest). Disk: reserve ~60 GB (CLAUDE.md says ~281 GB free — recheck before).
 
