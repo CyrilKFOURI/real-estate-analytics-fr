@@ -49,6 +49,22 @@ Geo levels: `commune` (INSEE code, 5 chars), `arrondissement` (Paris/Lyon/Marsei
 - Filosofi values are null where INSEE applies statistical secrecy (small communes).
 - INSEE codes overlap between geo levels (a "bassin de vie" can be 49007): always filter on GEO_OBJECT.
 
+### Implementation notes (M5, M7, M13–M17 and price bands, done)
+- **M5 trend** (`kpi_price.cagr`, `cagr_since`): annualised change of the median €/m² since the first *complete* year of the DVF window (2022 → 2025 today); 3–4 years only, because DVF keeps 5 years.
+- **M7** `median_surface_m2`; **price bands** (`kpi_price_bands`): share of sales < 100 k€, 100–200, 200–300, 300–500, > 500 k€ per geo × year × type (idea from the 2024 ECE DataViz project).
+- **M13** `kpi_score.rent_to_income`: yearly rent of a 45 m² 2-room flat (ANIL T1–T2 rent) / median living standard (Filosofi, per consumption unit). Rule of thumb: ≤ 1/3.
+- **M14** `kpi_dpe` (ADEME API `dpe03existant`, aggregated per commune × label, one call per département): shares A–G and F+G among DPE done since July 2021 — mostly homes sold or let, not the whole stock.
+- **M15** `kpi_local_tax.tfpb_rate` (DGFiP REI): sum of the built-property tax rates levied on the commune (commune E12, syndicates E22, intercommunality E32, TSE E52, GEMAPI, TASA). The tax ≈ ½ cadastral rental value × rate. The REI amount per "article" was rejected as a per-home estimate (it mixes business premises).
+- **M16** `rent_control`: communes from `pipeline/config/rent_control.json` (71 communes, 2026-09 list; Lyon/Villeurbanne under appeal but still applied), resolved to INSEE codes; unknown names fail the run. "Zones tendues" (1 434 communes) are not in open data: not done.
+- **M17** `kpi_score`: weighted mean of percentile ranks among communes of the same level and type with ≥ 30 sales; weights in `pipeline/config/score_weights.json` (yield 30, trend 15, population 15, vacancy 15, jobs 10, F/G 10, sales 5); missing criteria are dropped and weights renormalised; two strengths and two weaknesses kept for the UI.
+- Yields above 30 % are not published (`rents.MAX_PLAUSIBLE_YIELD`): they come from tiny odd cells; validation V3 checks they stay < 0.5 % of cells.
+
+### Implementation notes (D14–D17, done — apps/app/src/core-kpi/projection.ts)
+- **D14 IRR**: yearly projection over 10/15/20 years; rents and costs indexed, annuity amortisation, tax of the best eligible regime each year (LMNP réel: depreciation carried forward), resale at the commune trend (default +1 %/yr, capped ±5 %), capital gains tax with holding allowances (income tax exempt after 22 years, social charges after 30), flat 7.5 % fees and 15 % works after 5 years, LMNP depreciation added back since the 2025 finance law. Surtax above 50 k€ of gain not modelled.
+- **D15 leverage**: re = rp + (rp − rd) × D/E with rp = NOI / total cost, rd = loan rate + insurance.
+- **D16 BRRRR**: max offer = 70 % × after-repair value − works; refinance = 75 % × ARV; cash left = total cost − refinance.
+- **D17 break-even occupancy**: (taxe foncière + condo charges + PNO + debt service) / (12 × rent × (1 − management − maintenance)).
+
 ## 2. Deal KPIs (on the fly, client side, pure functions in `packages/core-kpi`)
 
 Inputs: price, notary fees (default 7.5% old / 2.5% new), works, furniture, rent, charges, taxe foncière (default M15), PNO insurance, management %, vacancy (default from M11, min 1 month/yr), loan (rate, years, down payment, insurance), tax regime, TMI.

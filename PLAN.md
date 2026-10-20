@@ -7,12 +7,12 @@
 - [x] 002 Commune page: publish JSON → Expo web page "search a commune → price KPIs + trend chart"
 - [x] 003 Rents + yield: ANIL ingest → M8, M9 → shown on commune page + ranking list (/ranking, filters: type, risk, département, budget, sort)
 - [x] 004 Deal simulator: core-kpi D1–D9, D12 + screen, prefilled from commune KPIs
-- [ ] 005 Map: PMTiles choropleth of M1 / M9
-- [ ] 006 INSEE + DPE + REI: M11–M15, market score M17  (INSEE M11–M13 done: kpi_socio.parquet)
+- [x] 005 Map: Leaflet choropleth, France by département → communes, 10 metrics, quintile classes (browser check pending, see NIGHT_LOG)
+- [x] 006 INSEE + DPE + REI + rent control + market score: M11–M17 all done
 - [x] 007 Scheduled runs: `rea auto` (change detection by ETag/SHA-256, rebuild only if needed) + PowerShell script; Task Scheduler registration left to the user (docs/PIPELINE_RUN_SPEC.md §4)
 - [x] 008 Browser extension: Manifest V3, no dependency, reads the open listing on click and opens the prefilled dashboard (apps/extension)
 - [ ] 009 Expo mobile build (iOS/Android)
-- [ ] 010 Tax regimes + IRR (D13, D14), BRRRR (D16)  (D13 first-year tax comparison done; IRR and BRRRR pending)
+- [x] 010 Tax regimes (D13), IRR with resale (D14), leverage (D15), BRRRR (D16), break-even (D17)
 - [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
 - [x] 012 Property analysis dashboard: verdict + price + rent + money + risks + area for one property (design: docs/features/012-property-dashboard/spec.md; needs 004 and 011)
 
