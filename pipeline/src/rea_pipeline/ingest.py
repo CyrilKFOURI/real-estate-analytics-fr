@@ -26,15 +26,17 @@ def _sha256(path: Path) -> str:
 
 
 def download(url: str, dest: Path, client: httpx.Client) -> dict:
-    """Download url to dest unless the stored metadata says the remote ETag is unchanged."""
+    """Download url to dest; `skipped` is True when the content did not change.
+
+    Unchanged is decided by the ETag when the server sends one (no download), else by the
+    SHA-256 of the downloaded file (INSEE and unpkg send no ETag)."""
     meta_path = dest.with_name(dest.name + ".meta.json")
     head = client.head(url)
     head.raise_for_status()
     etag = head.headers.get("etag")
-    if dest.exists() and meta_path.exists():
-        meta = json.loads(meta_path.read_text())
-        if etag and meta.get("etag") == etag:
-            return meta | {"skipped": True}
+    previous = json.loads(meta_path.read_text()) if dest.exists() and meta_path.exists() else None
+    if previous and etag and previous.get("etag") == etag:
+        return previous | {"skipped": True}
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
@@ -43,12 +45,16 @@ def download(url: str, dest: Path, client: httpx.Client) -> dict:
         with tmp.open("wb") as f:
             for chunk in response.iter_bytes(1 << 20):
                 f.write(chunk)
+    sha256 = _sha256(tmp)
+    if previous and previous.get("sha256") == sha256:
+        tmp.unlink()
+        return previous | {"skipped": True}
     tmp.replace(dest)
 
     meta = {
         "url": url,
         "etag": etag,
-        "sha256": _sha256(dest),
+        "sha256": sha256,
         "bytes": dest.stat().st_size,
         "downloaded_at": datetime.now(timezone.utc).isoformat(),
     }

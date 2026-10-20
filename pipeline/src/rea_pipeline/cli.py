@@ -109,6 +109,37 @@ def build_dvf(skip_ingest: bool) -> int:
     return status
 
 
+def _changed(result) -> bool:
+    """True if an ingest result (a download meta, a list of them, or a dict holding 'files') is new."""
+    if isinstance(result, list):
+        return any(_changed(item) for item in result)
+    if isinstance(result, dict) and "files" in result:
+        return any(_changed(item) for item in result["files"].values())
+    return isinstance(result, dict) and result.get("skipped") is False
+
+
+def auto_update() -> int:
+    """Scheduled entry point (docs/PIPELINE_RUN_SPEC.md §4): download what changed upstream,
+    rebuild and refresh the app only if something did. Exit code 0 when up to date or rebuilt."""
+    ingested = {
+        "refs": ingest.ingest_refs(),
+        "dvf": ingest.ingest_dvf(),
+        "geo-dvf": geo.ingest_geo_dvf(),
+        "rents": rents.ingest_rents(),
+        "insee": insee.ingest_insee(),
+    }
+    changed = [name for name, result in ingested.items() if _changed(result)]
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if not changed:
+        print(f"{stamp} up to date, nothing to rebuild")
+        return 0
+    print(f"{stamp} changed upstream: {', '.join(changed)}; rebuilding")
+    status = build_dvf(skip_ingest=True)
+    if status == 0:
+        publish.sync_app(APP_PUBLIC_DATA)
+    return status
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rea")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +149,7 @@ def main() -> None:
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
     sub.add_parser("sync-app", help="copy data/serve into apps/app/public/data")
     sub.add_parser("publish", help="S5 only: rebuild data/serve from the published marts")
+    sub.add_parser("auto", help="scheduled run: rebuild only if an upstream source changed")
     sub.add_parser("locations", help="rebuild and export section/commune points from geo-DVF only")
     args = parser.parse_args()
 
@@ -127,6 +159,8 @@ def main() -> None:
         print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents(),
                           insee.ingest_insee()],
                          indent=2, default=str))
+    if args.command == "auto":
+        sys.exit(auto_update())
     if args.command == "publish":
         con = duckdb.connect()
         refs.build_commune_map(con, ingest.communes_file())
