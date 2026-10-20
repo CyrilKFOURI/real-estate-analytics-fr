@@ -64,7 +64,12 @@ const Details = ({ feature, view }: { feature: MapFeature; view: View_ }) => {
           <ThemedText type="small">{m.format(p[m.key] as number)}</ThemedText>
         </View>
       ))}
-      {isPlace && (
+      {isPlace && typeof p.sales_all !== 'number' && (
+        <ThemedText type="small" themeColor="textSecondary">
+          Moins de 10 ventes sur l&apos;année : pas de chiffres de prix publiés pour cette commune.
+        </ThemedText>
+      )}
+      {isPlace && typeof p.sales_all === 'number' && (
         <Link href={`/place/${p.level ?? 'commune'}/${p.code}`}>
           <ThemedText type="smallBold" themeColor="accent">
             Voir la page de {p.nom} →
