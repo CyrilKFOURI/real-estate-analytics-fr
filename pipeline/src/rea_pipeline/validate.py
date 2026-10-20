@@ -71,7 +71,8 @@ YIELD_BANDS = {
     ("france", "FR"): (0.04, 0.09),
 }
 MIN_RENT_COVERAGE = 0.95
-MAX_PLAUSIBLE_YIELD = 0.30
+MAX_PLAUSIBLE_YIELD = 0.30  # same value as rents.MAX_PLAUSIBLE_YIELD
+MAX_DROPPED_YIELD_SHARE = 0.005
 
 
 def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
@@ -100,11 +101,15 @@ def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
               AND (p.property_type = 'apartment' OR (p.property_type = 'house' AND p.rooms_bucket = 'all'))"""
     ).fetchone()[0]
     checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
-    highest = con.execute(
-        "SELECT max(gross_yield) FROM kpi_yield WHERE geo_level = 'commune' AND n_sales >= 10"
+    # implausible yields are not published (rents.MAX_PLAUSIBLE_YIELD); they must stay a rare exception
+    dropped = con.execute(
+        f"""SELECT count(*) FILTER (WHERE 12 * r.rent_m2 / p.median_price_m2 > {MAX_PLAUSIBLE_YIELD})::DOUBLE
+                  / count(*)
+           FROM kpi_price p JOIN rent_geo r USING (geo_level, geo_code, property_type, rooms_bucket)
+           WHERE p.year >= r.vintage AND p.n_sales >= 10"""
     ).fetchone()[0]
-    checks.append(("max commune yield", highest is not None and highest <= MAX_PLAUSIBLE_YIELD,
-                   f"{highest:.1%} (limit {MAX_PLAUSIBLE_YIELD:.0%})"))
+    checks.append(("implausible yields dropped", dropped <= MAX_DROPPED_YIELD_SHARE,
+                   f"{dropped:.3%} of cells (limit {MAX_DROPPED_YIELD_SHARE:.1%})"))
     return checks
 
 

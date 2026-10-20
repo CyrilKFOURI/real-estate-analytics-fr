@@ -14,6 +14,7 @@ import type { Ranking, RankingRow } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const SORTS: { value: SortKey; label: string }[] = [
+  { value: 'score', label: 'Score de marché' },
   { value: 'yield', label: 'Rentabilité' },
   { value: 'price', label: 'Prix le plus bas' },
   { value: 'trend', label: 'Prix en hausse' },
@@ -37,6 +38,9 @@ const Row = ({ row, rank }: { row: RankingRow; rank: number }) => {
           <ThemedText type="small" themeColor="textSecondary">
             {formatEurosPerM2(row.median_price_m2)} · loyer {formatRentPerM2(row.rent_m2)} · {formatSignedPercent(row.yoy_change)} sur un an
             · {formatCount(row.n_sales)} ventes
+            {row.score != null ? ` · score ${Math.round(row.score)}/100` : ''}
+            {row.share_fg != null ? ` · F/G ${formatPercent(row.share_fg)}` : ''}
+            {row.rent_control ? ' · loyers encadrés' : ''}
           </ThemedText>
           {isRisky(row) && (
             <ThemedText type="small" themeColor="warningText">
@@ -94,6 +98,11 @@ export default function RankingScreen() {
             <View style={styles.chips}>
               <Chip label="Appartements" selected={filter.propertyType === 'apartment'} onPress={() => setFilter({ ...filter, propertyType: 'apartment' })} />
               <Chip label="Maisons" selected={filter.propertyType === 'house'} onPress={() => setFilter({ ...filter, propertyType: 'house' })} />
+              <Chip
+                label="Écarter les loyers encadrés"
+                selected={Boolean(filter.excludeRentControl)}
+                onPress={() => setFilter({ ...filter, excludeRentControl: !filter.excludeRentControl })}
+              />
               <Chip
                 label="Écarter les villes à risque"
                 selected={filter.excludeRisky}

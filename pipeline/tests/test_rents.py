@@ -111,3 +111,10 @@ def test_no_yield_on_implausibly_low_prices(con):
     con.execute("UPDATE kpi_price SET median_price_m2 = 142 WHERE geo_code = '49007'")
     rents.build_yield_kpis(con)
     assert _yield(con, "commune", "49007") is None
+
+
+def test_implausible_yield_not_published(con):
+    # 15 €/m² rent on a 500 €/m² price = 36 % gross yield: not a market
+    con.execute("UPDATE kpi_price SET median_price_m2 = 500 WHERE geo_code = '49007'")
+    rents.build_yield_kpis(con)
+    assert _yield(con, "commune", "49007") is None

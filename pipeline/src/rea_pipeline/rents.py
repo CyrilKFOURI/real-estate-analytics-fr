@@ -22,6 +22,9 @@ RENTS_DIR = paths.RAW / "rents"
 # Below this median €/m² a "market" is made of non-market sales (shares of undivided property,
 # ruins): a yield would be meaningless (Sainte-Rose, Guadeloupe: 142 €/m² -> 104 %).
 MIN_PLAUSIBLE_PRICE_M2 = 300
+# A gross yield above this is not a market: it comes from a handful of odd sales in a small cell
+# (one half-year, one room count). Such cells get no yield; validation checks they stay rare.
+MAX_PLAUSIBLE_YIELD = 0.30
 
 # ANIL file stem -> (property_type, rooms buckets of kpi_price it applies to)
 SEGMENTS = {
@@ -176,6 +179,7 @@ def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
         -- a rent edition describes its own year: never pair it with older prices
         WHERE p.year >= r.vintage
           AND p.median_price_m2 >= {MIN_PLAUSIBLE_PRICE_M2}
+          AND 12 * r.rent_m2 / p.median_price_m2 <= {MAX_PLAUSIBLE_YIELD}
         """
     )
 

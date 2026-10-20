@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { KpiTile } from '@/components/kpi-tile';
+import { EnergyBar, PriceBandBars, ScoreCard } from '@/components/place-sections';
 import { RiskBanner } from '@/components/risk-banner';
 import { SegmentPicker } from '@/components/segment-picker';
 import { ThemedText } from '@/components/themed-text';
@@ -90,6 +91,8 @@ export default function PlaceScreen() {
   const series = halfYearSeries(place.prices, segment);
   const rent = year ? yieldFor(place.yields, segment, year.period) : undefined;
   const socio = place.socio;
+  const score = segment.propertyType === 'all' ? undefined : place.score?.[segment.propertyType];
+  const bands = place.price_bands?.[segment.propertyType];
   const title = place.name ?? code;
 
   return (
@@ -112,6 +115,13 @@ export default function PlaceScreen() {
 
         <RiskBanner socio={socio} />
 
+        {place.rent_control && (
+          <ThemedText type="small" themeColor="warningText">
+            Loyers encadrés : le loyer d&apos;un nouveau bail ne peut pas dépasser le loyer de référence majoré
+            fixé par arrêté préfectoral.
+          </ThemedText>
+        )}
+
         <SegmentPicker segment={segment} onChange={setSegment} />
 
         {year ? (
@@ -133,8 +143,19 @@ export default function PlaceScreen() {
                 label="Évolution sur un an"
                 value={formatSignedPercent(year.yoy_change)}
                 detailColor={signColor(year.yoy_change)}
-                detail={`Fourchette ${formatEurosPerM2(year.p25_price_m2)} – ${formatEurosPerM2(year.p75_price_m2)}`}
+                detail={
+                  year.cagr != null && year.cagr_since != null
+                    ? `Depuis ${year.cagr_since} : ${formatSignedPercent(year.cagr)} par an`
+                    : `Fourchette ${formatEurosPerM2(year.p25_price_m2)} – ${formatEurosPerM2(year.p75_price_m2)}`
+                }
               />
+              {year.median_surface_m2 != null && (
+                <KpiTile
+                  label="Surface médiane vendue"
+                  value={`${Math.round(year.median_surface_m2)} m²`}
+                  detail={`Fourchette ${formatEurosPerM2(year.p25_price_m2)} – ${formatEurosPerM2(year.p75_price_m2)}`}
+                />
+              )}
               <KpiTile
                 label="Loyer d'annonce (charges comprises)"
                 value={formatRentPerM2(rent?.rent_m2)}
@@ -181,6 +202,24 @@ export default function PlaceScreen() {
           </ThemedText>
         )}
 
+        {score && (
+          <View style={styles.section}>
+            <ThemedText type="smallBold">
+              Score de marché ({segment.propertyType === 'house' ? 'maisons' : 'appartements'}, {formatPeriod(score.period)})
+            </ThemedText>
+            <ScoreCard score={score} />
+          </View>
+        )}
+
+        {bands && (
+          <View style={styles.section}>
+            <ThemedText type="smallBold">
+              Ventes par prix total en {place.price_bands?.year} ({formatCount(bands.n_sales)} ventes)
+            </ThemedText>
+            <PriceBandBars bands={bands.bands} />
+          </View>
+        )}
+
         {series.length > 1 && (
           <View style={styles.section}>
             <ThemedText type="smallBold">Prix médian au m² par semestre</ThemedText>
@@ -218,8 +257,48 @@ export default function PlaceScreen() {
           </View>
         )}
 
+        {(place.energy || place.local_tax) && (
+          <View style={styles.section}>
+            <ThemedText type="smallBold">Énergie et fiscalité locale</ThemedText>
+            {place.energy && (
+              <>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Étiquettes DPE des {formatCount(place.energy.n_dpe)} diagnostics réalisés depuis 2021 (surtout des
+                  logements vendus ou loués). G : location interdite depuis 2025, F à partir de 2028.
+                </ThemedText>
+                <EnergyBar energy={place.energy} />
+              </>
+            )}
+            <View style={styles.tiles}>
+              {place.energy && (
+                <KpiTile
+                  label="Passoires énergétiques F/G"
+                  value={formatPercent(place.energy.share_fg)}
+                  detailColor={place.energy.share_fg > 0.15 ? 'negative' : undefined}
+                  detail="Part des diagnostics classés F ou G"
+                />
+              )}
+              {place.local_tax && (
+                <KpiTile
+                  label={`Taux de taxe foncière ${place.local_tax.tax_year}`}
+                  value={formatPercent(place.local_tax.tfpb_rate)}
+                  detail="Commune + intercommunalité + taxes spéciales, appliqué à la moitié de la valeur locative"
+                />
+              )}
+              {score?.rent_to_income != null && (
+                <KpiTile
+                  label="Poids du loyer d'un T2 de 45 m²"
+                  value={formatPercent(score.rent_to_income)}
+                  detailColor={score.rent_to_income > 0.33 ? 'negative' : undefined}
+                  detail="Loyer annuel / niveau de vie médian (règle : un tiers au plus)"
+                />
+              )}
+            </View>
+          </View>
+        )}
+
         <ThemedText type="small" themeColor="textSecondary">
-          Sources : DVF (DGFiP), Carte des loyers (ANIL/DHUP), INSEE. Calcul {place.run_id}.
+          Sources : DVF (DGFiP), Carte des loyers (ANIL/DHUP), INSEE, DPE (ADEME), REI (DGFiP). Calcul {place.run_id}.
         </ThemedText>
       </ScrollView>
     </ThemedView>
