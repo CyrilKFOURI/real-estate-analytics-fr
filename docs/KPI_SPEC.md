@@ -42,6 +42,13 @@ Geo levels: `commune` (INSEE code, 5 chars), `arrondissement` (Paris/Lyon/Marsei
 - `rent_source = 'maille'` means the commune has too few listings and borrows the rent of a group of neighbouring communes: show it as lower confidence.
 - A very high gross yield (> 10 %) usually signals risk (vacancy, degraded condominiums, falling population), not a bargain. That's why M11–M13 and the M17 score matter.
 
+### Implementation notes (M11–M13, done) — `kpi_socio.parquet`
+- Source: INSEE "Comparateur de territoires" (one long-format file, census 2023 vs 2017, Filosofi 2023), already published for commune, arrondissement, département, région and France, so no aggregation is done.
+- Columns: population, population_growth_yearly, dwellings, vacancy_rate, vacancy_change_pts, second_home_share, renter_share, median_living_standard, poverty_rate, jobs, jobs_growth_yearly.
+- Flags: `flag_high_vacancy` (> 10 %), `flag_population_decline` (< −0.2 %/year). They explain most extreme yields: 6 of the top 8 gross yields carry at least one flag.
+- Filosofi values are null where INSEE applies statistical secrecy (small communes).
+- INSEE codes overlap between geo levels (a "bassin de vie" can be 49007): always filter on GEO_OBJECT.
+
 ## 2. Deal KPIs (on the fly, client side, pure functions in `packages/core-kpi`)
 
 Inputs: price, notary fees (default 7.5% old / 2.5% new), works, furniture, rent, charges, taxe foncière (default M15), PNO insurance, management %, vacancy (default from M11, min 1 month/yr), loan (rate, years, down payment, insurance), tax regime, TMI.

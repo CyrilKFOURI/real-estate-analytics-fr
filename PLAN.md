@@ -8,7 +8,7 @@
 - [ ] 003 Rents + yield: ANIL ingest → M8, M9 → shown on commune page + ranking list  (data part done: kpi_yield.parquet; UI part pending)
 - [ ] 004 Deal simulator: core-kpi D1–D9, D12 + screen, prefilled from commune KPIs
 - [ ] 005 Map: PMTiles choropleth of M1 / M9
-- [ ] 006 INSEE + DPE + REI: M11–M15, market score M17
+- [ ] 006 INSEE + DPE + REI: M11–M15, market score M17  (INSEE M11–M13 done: kpi_socio.parquet)
 - [ ] 007 Scheduled runs (Task Scheduler, upstream change check) + run reports
 - [ ] 008 Browser extension (WXT) annotating listing pages
 - [ ] 009 Expo mobile build (iOS/Android)

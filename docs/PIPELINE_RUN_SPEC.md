@@ -46,7 +46,7 @@ Order is enforced by `rea build`, which runs stages sequentially in one process 
 |---|---|---|---|
 | DVF official (DGFiP, data.gouv.fr API) | April + October | within 2 weeks of release | **full rebuild of all files** (releases rewrite history; window = 5 years by half-years, e.g. 2021-H2 → 2026-H1). Chosen over geo-DVF, which lags the official release by weeks |
 | ANIL carte des loyers | yearly | on release | full, edition stored as `vintage` (not comparable YoY) |
-| INSEE pop / logement / Filosofi | yearly | on release | full |
+| INSEE Comparateur de territoires (pop, logement, Filosofi, emploi) | yearly | on release (ETag check) | full |
 | DPE ADEME | continuous | monthly | incremental by `date_etablissement` |
 | REI / OFGL | yearly | on release | full |
 | Banque de France rates | monthly | monthly | append (feeds simulator defaults) |

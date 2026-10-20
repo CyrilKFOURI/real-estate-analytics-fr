@@ -12,10 +12,11 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, ingest, marts, paths, refs, rents, validate
+from . import clean, ingest, insee, marts, paths, refs, rents, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
+PUBLISHED_SOCIO_KPIS = paths.MARTS / "kpi_socio.parquet"
 
 
 class GateFailed(Exception):
@@ -48,6 +49,7 @@ def build_dvf(skip_ingest: bool) -> int:
             stage("S1 ingest refs", ingest.ingest_refs())
             stage("S1 ingest dvf", ingest.ingest_dvf())
             stage("S1 ingest rents", rents.ingest_rents())
+            stage("S1 ingest insee", insee.ingest_insee())
         refs.build_commune_map(con, ingest.communes_file())
         stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
 
@@ -73,13 +75,20 @@ def build_dvf(skip_ingest: bool) -> int:
         stage("S3 yields", con.execute("SELECT count(*) FROM kpi_yield").fetchone()[0])
         _gate("V3", validate.check_yields(con), report)
 
+        insee.build_socio_kpis(con, insee.comparateur_file(), run_id)
+        stage("S3 socio", con.execute("SELECT count(*) FROM kpi_socio").fetchone()[0])
+        _gate("V4", validate.check_socio(con), report)
+
         # publish atomically: write every file next to its target, then rename them all
         price_next = PUBLISHED_PRICE_KPIS.with_name("kpi_price.next.parquet")
         yield_next = PUBLISHED_YIELD_KPIS.with_name("kpi_yield.next.parquet")
         stage("publish prices", marts.export_published(con, price_next))
+        socio_next = PUBLISHED_SOCIO_KPIS.with_name("kpi_socio.next.parquet")
         stage("publish yields", rents.export_published(con, yield_next, marts.MIN_PUBLISHED_SALES))
+        stage("publish socio", insee.export_published(con, socio_next))
         price_next.replace(PUBLISHED_PRICE_KPIS)
         yield_next.replace(PUBLISHED_YIELD_KPIS)
+        socio_next.replace(PUBLISHED_SOCIO_KPIS)
         report["status"] = "success"
     except GateFailed as failed:
         report["status"] = f"failed at gate {failed}"
@@ -98,14 +107,15 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="run the full DVF pipeline S0→publish")
     build.add_argument("--skip-ingest", action="store_true", help="reuse files already in data/raw")
-    sub.add_parser("ingest", help="S1 only: download refs, DVF and rents")
+    sub.add_parser("ingest", help="S1 only: download refs, DVF, rents and INSEE")
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
     args = parser.parse_args()
 
     if args.command == "build":
         sys.exit(build_dvf(args.skip_ingest))
     if args.command == "ingest":
-        print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents()],
+        print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents(),
+                          insee.ingest_insee()],
                          indent=2, default=str))
     if args.command == "clean-runs":
         for run in paths.RUNS.glob("*"):

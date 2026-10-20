@@ -100,3 +100,30 @@ def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
     ).fetchone()[0]
     checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
     return checks
+
+
+# Census 2023 orders of magnitude: Paris ~2.1 M inhabitants, France ~68 M, vacancy ~8 %.
+SOCIO_BANDS = {
+    ("commune", "75056", "population"): (1.9e6, 2.3e6),
+    ("france", "FR", "population"): (65e6, 71e6),
+    ("france", "FR", "vacancy_rate"): (0.06, 0.11),
+}
+MIN_SOCIO_COVERAGE = 0.99
+
+
+def check_socio(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    checks = []
+    for (level, code, column), (low, high) in SOCIO_BANDS.items():
+        row = con.execute(
+            f"SELECT {column} FROM kpi_socio WHERE geo_level = ? AND geo_code = ?", [level, code]
+        ).fetchone()
+        ok = row is not None and row[0] is not None and low <= row[0] <= high
+        checks.append((f"{column} {code}", ok, "missing" if row is None else f"{row[0]:,.3f}"))
+    # every commune with published prices must have INSEE context
+    coverage = con.execute(
+        """SELECT count(s.geo_code)::DOUBLE / count(*) FROM
+               (SELECT DISTINCT geo_code FROM kpi_price WHERE geo_level = 'commune' AND n_sales >= 10) p
+           LEFT JOIN kpi_socio s ON s.geo_level = 'commune' AND s.geo_code = p.geo_code"""
+    ).fetchone()[0]
+    checks.append(("socio coverage", coverage >= MIN_SOCIO_COVERAGE, f"{coverage:.1%} of priced communes"))
+    return checks
