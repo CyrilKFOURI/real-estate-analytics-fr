@@ -115,6 +115,11 @@ export default function PlaceScreen() {
         {year ? (
           <>
             <ThemedText type="smallBold">Marché en {formatPeriod(year.period)}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Les prix sont ceux de ventes déjà signées chez le notaire (DVF), donc le passé : ce que
+              des acheteurs ont réellement payé, pas les prix d&apos;annonce actuels, souvent un peu
+              plus hauts avant négociation. Les loyers, eux, sont des loyers d&apos;annonce.
+            </ThemedText>
             <View style={styles.tiles}>
               <KpiTile
                 label="Prix médian"
