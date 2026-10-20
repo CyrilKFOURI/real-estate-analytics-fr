@@ -19,6 +19,9 @@ from .ingest import download
 DATASET_SEARCH_API = "https://www.data.gouv.fr/api/1/datasets/?q=carte%20des%20loyers&page_size=20"
 SLUG = re.compile(r"^carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-(\d{4})$")
 RENTS_DIR = paths.RAW / "rents"
+# Below this median €/m² a "market" is made of non-market sales (shares of undivided property,
+# ruins): a yield would be meaningless (Sainte-Rose, Guadeloupe: 142 €/m² -> 104 %).
+MIN_PLAUSIBLE_PRICE_M2 = 300
 
 # ANIL file stem -> (property_type, rooms buckets of kpi_price it applies to)
 SEGMENTS = {
@@ -159,7 +162,7 @@ def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
     con.execute(
-        """
+        f"""
         CREATE OR REPLACE TABLE kpi_yield AS
         SELECT p.geo_level, p.geo_code, p.period_type, p.period, p.property_type, p.rooms_bucket,
                p.n_sales, p.median_price_m2,
@@ -172,6 +175,7 @@ def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
         JOIN rent_geo r USING (geo_level, geo_code, property_type, rooms_bucket)
         -- a rent edition describes its own year: never pair it with older prices
         WHERE p.year >= r.vintage
+          AND p.median_price_m2 >= {MIN_PLAUSIBLE_PRICE_M2}
         """
     )
 

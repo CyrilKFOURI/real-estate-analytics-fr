@@ -65,6 +65,8 @@ cd pipeline
 uv run rea ingest              # S1: refs + DVF, skipped when upstream ETag unchanged
 uv run rea build               # S0→S1→S2→V1→S3→V2→publish (implemented for DVF)
 uv run rea build --skip-ingest # rebuild from files already downloaded
+uv run rea publish             # S5 only: rebuild data/serve (JSON + ranking.json) from the published marts
+uv run rea sync-app            # copy data/serve into the app
 uv run rea clean-runs          # delete reports of failed runs
 ```
 First full run estimate on the laptop: ~30–60 min (DVF ≈ 1 GB gz, DPE the slowest). Disk: reserve ~60 GB (CLAUDE.md says ~281 GB free — recheck before).

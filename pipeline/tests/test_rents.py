@@ -105,3 +105,9 @@ def test_rooms_segments_expanded(con):
         ).fetchall()
     }
     assert buckets == {"all", "1", "2", "3", "4", "5+"}
+
+
+def test_no_yield_on_implausibly_low_prices(con):
+    con.execute("UPDATE kpi_price SET median_price_m2 = 142 WHERE geo_code = '49007'")
+    rents.build_yield_kpis(con)
+    assert _yield(con, "commune", "49007") is None

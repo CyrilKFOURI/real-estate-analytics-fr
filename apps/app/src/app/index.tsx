@@ -41,6 +41,9 @@ export default function SearchScreen() {
             Vous avez un bien en vue ? Analysez-le →
           </ThemedText>
         </Link>
+        <Link href="/ranking" style={StyleSheet.flatten([styles.propertyCta, { borderColor: theme.border }])}>
+          <ThemedText type="smallBold">Où investir ? Le classement des villes →</ThemedText>
+        </Link>
         <ThemedText type="subtitle">Quelle ville ?</ThemedText>
         <ThemedText themeColor="textSecondary">
           Prix de vente (DVF), loyers (ANIL) et contexte INSEE pour chaque commune.

@@ -101,11 +101,53 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
                     "places": index}, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    ranking = _write_ranking(con, staging / "ranking.json", run_id)
     shutil.rmtree(serve_dir, ignore_errors=True)
     staging.rename(serve_dir)
-    return {"files": len(sizes), "indexed": len(index),
+    return {"files": len(sizes), "indexed": len(index), "ranked": ranking,
             "avg_kb": round(sum(sizes) / max(len(sizes), 1) / 1024, 1),
             "max_kb": round(max(sizes, default=0) / 1024, 1)}
+
+
+# A ranking is only meaningful on stable medians: stricter than the n >= 10 publication rule.
+RANKING_MIN_SALES = 30
+RANKING_FIELDS = ("code", "level", "name", "departement", "region", "property_type", "n_sales",
+                  "median_price_m2", "yoy_change", "rent_m2", "rent_source", "gross_yield", "population",
+                  "population_growth_yearly", "vacancy_rate", "flag_high_vacancy", "flag_population_decline")
+
+
+def _write_ranking(con: duckdb.DuckDBPyConnection, dest: Path, run_id: str) -> int:
+    """Communes and arrondissements with a yield for the latest complete year, all rooms,
+    apartments and houses: one compact file the app filters and sorts on device."""
+    rows = con.execute(
+        f"""
+        WITH latest AS (
+            SELECT max(period) AS latest_period FROM kpi_price WHERE period_type = 'year' AND NOT is_partial
+        )
+        SELECT y.geo_code, y.geo_level, m.nom, m.departement, m.region, y.property_type, y.n_sales,
+               round(p.median_price_m2), round(p.yoy_change, 4), round(y.rent_m2, 2), y.rent_source,
+               round(y.gross_yield, 4), s.population, round(s.population_growth_yearly, 4),
+               round(s.vacancy_rate, 4), s.flag_high_vacancy, s.flag_population_decline
+        FROM kpi_yield y
+        JOIN latest ON y.period = latest.latest_period
+        JOIN kpi_price p USING (geo_level, geo_code, period_type, period, property_type, rooms_bucket)
+        JOIN commune_map m ON m.code = y.geo_code
+        LEFT JOIN kpi_socio s ON s.geo_level = y.geo_level AND s.geo_code = y.geo_code
+        WHERE y.geo_level IN ('commune', 'arrondissement') AND y.rooms_bucket = 'all'
+          AND y.property_type IN ('apartment', 'house') AND y.n_sales >= {RANKING_MIN_SALES}
+        ORDER BY y.gross_yield DESC
+        """
+    ).fetchall()
+    period = con.execute(
+        "SELECT max(period) FROM kpi_price WHERE period_type = 'year' AND NOT is_partial"
+    ).fetchone()[0]
+    dest.write_text(
+        json.dumps({"run_id": run_id, "period": period, "min_sales": RANKING_MIN_SALES,
+                    "fields": RANKING_FIELDS, "rows": [list(r) for r in rows]},
+                   ensure_ascii=False, separators=(",", ":"), default=float),
+        encoding="utf-8",
+    )
+    return len(rows)
 
 
 def sync_app(app_public_data: Path, serve_dir: Path = paths.SERVE) -> None:

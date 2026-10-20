@@ -29,7 +29,7 @@ def _con() -> duckdb.DuckDBPyConnection:
     )
     con.execute(
         """CREATE TABLE kpi_yield AS SELECT 'commune' AS geo_level, '49007' AS geo_code,
-               '2025' AS period, 'apartment' AS property_type, 'all' AS rooms_bucket,
+               'year' AS period_type, '2025' AS period, 'apartment' AS property_type, 'all' AS rooms_bucket,
                14.6 AS rent_m2, 11.0 AS rent_low_m2, 19.0 AS rent_high_m2,
                'commune' AS rent_source, 29741 AS n_listings, 0.0555 AS gross_yield,
                18.0 AS price_to_rent_years, 1600 AS n_sales"""
@@ -60,6 +60,12 @@ def test_publish_writes_index_and_geo_files(tmp_path: Path):
     # communes and arrondissements only, biggest population first
     assert names == ["Angers", "Paris 1er"]
     assert json.loads((serve / "geo" / "france" / "FR.json").read_text())["name"] == "France"
+
+    # ranking: Angers apartments (1 600 sales ≥ 30) with their yield
+    ranking = json.loads((serve / "ranking.json").read_text(encoding="utf-8"))
+    rows = [dict(zip(ranking["fields"], row)) for row in ranking["rows"]]
+    assert ranking["period"] == "2025" and len(rows) == 1
+    assert rows[0]["name"] == "Angers" and rows[0]["gross_yield"] == 0.0555
 
 
 def test_publish_replaces_previous_serve_layer(tmp_path: Path):

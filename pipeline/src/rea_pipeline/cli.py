@@ -117,6 +117,7 @@ def main() -> None:
     sub.add_parser("ingest", help="S1 only: download refs, DVF, rents and INSEE")
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
     sub.add_parser("sync-app", help="copy data/serve into apps/app/public/data")
+    sub.add_parser("publish", help="S5 only: rebuild data/serve from the published marts")
     sub.add_parser("locations", help="rebuild and export section/commune points from geo-DVF only")
     args = parser.parse_args()
 
@@ -126,6 +127,14 @@ def main() -> None:
         print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents(),
                           insee.ingest_insee()],
                          indent=2, default=str))
+    if args.command == "publish":
+        con = duckdb.connect()
+        refs.build_commune_map(con, ingest.communes_file())
+        for table, path in (("kpi_price", PUBLISHED_PRICE_KPIS), ("kpi_yield", PUBLISHED_YIELD_KPIS),
+                            ("kpi_socio", PUBLISHED_SOCIO_KPIS)):
+            con.execute(f"CREATE TABLE {table} AS SELECT * FROM '{path.as_posix()}'")
+        run_id = con.execute("SELECT any_value(run_id) FROM kpi_price").fetchone()[0]
+        print(json.dumps(publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id), indent=2))
     if args.command == "locations":
         con = duckdb.connect()
         geo.build_location_tables(con, geo.geo_dvf_files())

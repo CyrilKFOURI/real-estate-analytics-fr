@@ -71,6 +71,7 @@ YIELD_BANDS = {
     ("france", "FR"): (0.04, 0.09),
 }
 MIN_RENT_COVERAGE = 0.95
+MAX_PLAUSIBLE_YIELD = 0.30
 
 
 def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
@@ -99,6 +100,11 @@ def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
               AND (p.property_type = 'apartment' OR (p.property_type = 'house' AND p.rooms_bucket = 'all'))"""
     ).fetchone()[0]
     checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
+    highest = con.execute(
+        "SELECT max(gross_yield) FROM kpi_yield WHERE geo_level = 'commune' AND n_sales >= 10"
+    ).fetchone()[0]
+    checks.append(("max commune yield", highest is not None and highest <= MAX_PLAUSIBLE_YIELD,
+                   f"{highest:.1%} (limit {MAX_PLAUSIBLE_YIELD:.0%})"))
     return checks
 
 
