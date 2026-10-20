@@ -8,6 +8,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ title: 'Rendement immobilier' }} />
         <Stack.Screen name="place/[level]/[code]" options={{ title: '' }} />
+        <Stack.Screen name="simulator" options={{ title: 'Simulateur' }} />
       </Stack>
     </ThemeProvider>
   );

@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Link, Stack, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
@@ -32,6 +32,7 @@ import {
   yieldFor,
 } from '@/data/select';
 import type { GeoLevel, Place } from '@/data/types';
+import { useTheme } from '@/hooks/use-theme';
 
 const LEVEL_LABELS: Record<GeoLevel, string> = {
   commune: 'Commune',
@@ -45,6 +46,7 @@ const signColor = (value: number | null | undefined) =>
   value == null || value === 0 ? undefined : value > 0 ? 'positive' : 'negative';
 
 export default function PlaceScreen() {
+  const theme = useTheme();
   const { level, code } = useLocalSearchParams<{ level: GeoLevel; code: string }>();
   // null until the user picks one: then the place's default segment applies
   const [pickedSegment, setSegment] = useState<Segment | null>(null);
@@ -159,6 +161,19 @@ export default function PlaceScreen() {
           </ThemedText>
         )}
 
+        {year && (
+          <Link
+            href={{
+              pathname: '/simulator',
+              params: { level: place.level, code: place.code, type: segment.propertyType, rooms: segment.rooms },
+            }}
+            style={StyleSheet.flatten([styles.cta, { backgroundColor: theme.accent }])}>
+            <ThemedText type="smallBold" style={styles.ctaLabel}>
+              Simuler un achat ici →
+            </ThemedText>
+          </Link>
+        )}
+
         {half && half.period !== year?.period && (
           <ThemedText type="small" themeColor="textSecondary">
             Dernier semestre ({formatPeriod(half.period)}) : {formatEurosPerM2(half.median_price_m2)},{' '}
@@ -224,4 +239,6 @@ const styles = StyleSheet.create({
   header: { gap: Spacing.one },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   section: { gap: Spacing.two },
+  cta: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: Spacing.four, paddingVertical: 12 },
+  ctaLabel: { color: '#ffffff' },
 });

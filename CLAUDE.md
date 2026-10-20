@@ -14,11 +14,12 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - app dev (web): `cd apps/app && npx expo start --web` (never with CI=1: it disables file watching)
 - lint: `cd apps/app && npx expo lint`
 - typecheck: `cd apps/app && npx tsc --noEmit`
+- app unit tests (core-kpi): `cd apps/app && npm test`
 
 ## Code structure
 - pipeline/src/rea_pipeline: ingest (S1), refs (S0), clean (S2), marts (S3), validate (gates), cli
 - data/ (gitignored): raw, clean, marts, serve (JSON for the app), runs
-- apps/app/src: app/ (routes), components/, data/ (types, fetch, format, search, select); read apps/app/AGENTS.md before touching Expo APIs
+- apps/app/src: app/ (routes), components/, core-kpi/ (pure deal maths + FR rules, no React), data/ (types, fetch, format, search, select); read apps/app/AGENTS.md before touching Expo APIs
 - docs/KPI_SPEC.md, docs/PIPELINE_RUN_SPEC.md: what KPIs and how they're run
 
 ## Docs
