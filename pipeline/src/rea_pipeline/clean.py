@@ -25,20 +25,37 @@ MIN_PRICE_EUR = 1_000
 
 
 def load_raw(con: duckdb.DuckDBPyConnection, files: list[Path]) -> None:
+    """Load official DVF files (data.gouv.fr 'ValeursFoncieres-*.txt') into table dvf_raw.
+
+    The official format has no mutation id, unpadded commune codes, French decimals
+    ("130000,00") and dd/mm/yyyy dates; this normalises it to DVF_COLUMNS.
+    """
     file_list = ", ".join(f"'{f.as_posix()}'" for f in files)
+    commune = (
+        '"Code departement" || lpad("Code commune", CAST(5 - length("Code departement") AS INTEGER), \'0\')'
+    )
     con.execute(
         f"""
         CREATE OR REPLACE TABLE dvf_raw AS
-        SELECT {", ".join(DVF_COLUMNS)}
+        SELECT
+            -- no id in the official files: every row of a sale shares these fields
+            md5(concat_ws('|', "Date mutation", "Nature mutation", "Valeur fonciere",
+                          "Code departement", "Code commune", "No disposition")) AS id_mutation,
+            TRY_CAST(strptime("Date mutation", '%d/%m/%Y') AS DATE) AS date_mutation,
+            "Nature mutation" AS nature_mutation,
+            TRY_CAST(replace("Valeur fonciere", ',', '.') AS DOUBLE) AS valeur_fonciere,
+            {commune} AS code_commune,
+            {commune} || lpad(coalesce("Prefixe de section", ''), 3, '0')
+                || lpad("Section", 2, '0') || lpad("No plan", 4, '0') AS id_parcelle,
+            "Type local" AS type_local,
+            TRY_CAST(replace("Surface reelle bati", ',', '.') AS DOUBLE) AS surface_reelle_bati,
+            TRY_CAST("Nombre pieces principales" AS DOUBLE) AS nombre_pieces_principales,
+            NULL::DOUBLE AS longitude,
+            NULL::DOUBLE AS latitude
         FROM read_csv([{file_list}], header = true, all_varchar = true, union_by_name = true,
-                      -- auto-detection misses quoted addresses containing commas
-                      delim = ',', quote = '"', escape = '"')
+                      delim = '|', quote = '')
         """
     )
-    casts = ", ".join(
-        f"TRY_CAST({name} AS {kind}) AS {name}" for name, kind in DVF_COLUMNS.items()
-    )
-    con.execute(f"CREATE OR REPLACE TABLE dvf_raw AS SELECT {casts} FROM dvf_raw")
 
 
 def build_sales(con: duckdb.DuckDBPyConnection) -> None:
@@ -75,6 +92,7 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
             m.id_mutation,
             m.date_mutation,
             year(m.date_mutation) AS year,
+            CASE WHEN month(m.date_mutation) <= 6 THEN 1 ELSE 2 END AS half,
             m.price,
             m.surface_m2,
             m.price / m.surface_m2 AS price_m2,

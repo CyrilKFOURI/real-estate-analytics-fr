@@ -44,7 +44,7 @@ Order is enforced by `rea build`, which runs stages sequentially in one process 
 
 | Source | Upstream cadence | Our run | Mode |
 |---|---|---|---|
-| geo-DVF | April + October | within 2 weeks of release | **full rebuild of all years** (releases rewrite history) |
+| DVF official (DGFiP, data.gouv.fr API) | April + October | within 2 weeks of release | **full rebuild of all files** (releases rewrite history; window = 5 years by half-years, e.g. 2021-H2 → 2026-H1). Chosen over geo-DVF, which lags the official release by weeks |
 | ANIL carte des loyers | yearly | on release | full, edition stored as `vintage` (not comparable YoY) |
 | INSEE pop / logement / Filosofi | yearly | on release | full |
 | DPE ADEME | continuous | monthly | incremental by `date_etablissement` |
@@ -71,3 +71,6 @@ First full run estimate on the laptop: ~30–60 min (DVF ≈ 1 GB gz, DPE the sl
 
 ## 7. Run metadata
 Every run writes `data/runs/<run_id>/manifest.json`: sources + releases + sha256, code git hash, rules config version, row counts, duration. Each served KPI row carries `run_id` → full traceability.
+
+## 8. Periods
+KPIs are computed per calendar year (`period_type='year'`) and per half-year (`'half'`, e.g. `2026-H1`). A year with only one half in the release is `is_partial` and has no YoY; half-years compare with the same half one year earlier.

@@ -1,6 +1,7 @@
 """S1: download upstream files into data/raw with metadata; skip files whose ETag is unchanged."""
 import hashlib
 import json
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,8 +9,11 @@ import httpx
 
 from . import paths
 
-DVF_YEARS = [2021, 2022, 2023, 2024, 2025]
-DVF_URL = "https://files.data.gouv.fr/geo-dvf/latest/csv/{year}/full.csv.gz"
+# Official DVF (DGFiP) on data.gouv.fr. Resource URLs change at every release (April/October),
+# so the current file list is read from the dataset API, never hard-coded.
+DVF_DATASET_API = "https://www.data.gouv.fr/api/1/datasets/demandes-de-valeurs-foncieres/"
+DVF_DIR = paths.RAW / "dvf_official"
+DVF_RELEASE = DVF_DIR / "release.json"
 COMMUNES_URL = "https://unpkg.com/@etalab/decoupage-administratif@6.0.0/data/communes.json"
 
 
@@ -52,20 +56,46 @@ def download(url: str, dest: Path, client: httpx.Client) -> dict:
     return meta | {"skipped": False}
 
 
-def dvf_files() -> list[Path]:
-    return [paths.RAW / "dvf" / f"{year}.csv.gz" for year in DVF_YEARS]
+def _current_dvf_resources(client: httpx.Client) -> list[dict]:
+    response = client.get(DVF_DATASET_API)
+    response.raise_for_status()
+    return [
+        r for r in response.json()["resources"]
+        if r.get("format") == "txt.zip" and r["title"].startswith("Valeurs fonci")
+    ]
 
 
-def communes_file() -> Path:
-    return paths.RAW / "refs" / "communes.json"
+def _extract(archive: Path) -> Path:
+    """Extract the single .txt of a DVF zip next to it (skipped if already extracted)."""
+    with zipfile.ZipFile(archive) as zf:
+        member = zf.namelist()[0]
+        target = archive.with_name(member)
+        if not target.exists() or target.stat().st_mtime < archive.stat().st_mtime:
+            zf.extract(member, archive.parent)
+    return target
 
 
 def ingest_dvf() -> list[dict]:
     with httpx.Client(follow_redirects=True, timeout=600) as client:
-        return [
-            download(DVF_URL.format(year=year), dest, client)
-            for year, dest in zip(DVF_YEARS, dvf_files())
-        ]
+        resources = _current_dvf_resources(client)
+        results = []
+        for resource in resources:
+            archive = DVF_DIR / resource["url"].rsplit("/", 1)[-1]
+            meta = download(resource["url"], archive, client)
+            results.append(meta | {"title": resource["title"], "txt": _extract(archive).name})
+    # the release file lists exactly the files of the current release: older files left on
+    # disk from a previous release are never loaded
+    DVF_RELEASE.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    return results
+
+
+def dvf_files() -> list[Path]:
+    release = json.loads(DVF_RELEASE.read_text(encoding="utf-8"))
+    return [DVF_DIR / item["txt"] for item in release]
+
+
+def communes_file() -> Path:
+    return paths.RAW / "refs" / "communes.json"
 
 
 def ingest_refs() -> dict:

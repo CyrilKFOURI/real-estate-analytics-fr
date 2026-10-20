@@ -40,4 +40,6 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo + TypeScript (planned
 
 ## Mistakes not to repeat
 - DVF repeats the sale price on every row of a mutation: aggregate per id_mutation first.
+- Source is the official DVF (data.gouv.fr API, URLs change each release); it has no mutation id: rebuilt as md5(date|nature|valeur|dept|commune|disposition). Commune codes are unpadded (971 + "2" -> 97102).
+- A DVF release is a rolling window of half-years (e.g. 2021-H2 → 2026-H1): edge years are is_partial, compare them by half-year only.
 - Paris/Lyon/Marseille appear in DVF as arrondissement codes (751xx, 6938x, 132xx).

@@ -21,8 +21,8 @@ def check_reference_bands(con: duckdb.DuckDBPyConnection) -> list[Check]:
     for (code, year), (low, high) in REFERENCE_BANDS.items():
         row = con.execute(
             """SELECT median_price_m2, n_sales FROM kpi_price
-               WHERE geo_level = 'commune' AND geo_code = ? AND year = ?
-                 AND property_type = 'apartment' AND rooms_bucket = 'all'""",
+               WHERE geo_level = 'commune' AND geo_code = ? AND period_type = 'year'
+                 AND period = CAST(? AS VARCHAR) AND property_type = 'apartment' AND rooms_bucket = 'all'""",
             [code, year],
         ).fetchone()
         if row is None:
@@ -38,8 +38,13 @@ def check_reference_bands(con: duckdb.DuckDBPyConnection) -> list[Check]:
 def check_national_drift(con: duckdb.DuckDBPyConnection, previous_marts: Path | None) -> list[Check]:
     if previous_marts is None or not previous_marts.exists():
         return [("national drift", True, "no previous run to compare")]
+    columns = {row[0] for row in con.execute(
+        f"DESCRIBE SELECT * FROM '{previous_marts.as_posix()}'").fetchall()}
+    if "period_type" not in columns:
+        return [("national drift", True, "previous run has the old schema, not comparable")]
     query = """SELECT median(median_price_m2) FROM {src}
-               WHERE geo_level = 'departement' AND property_type = 'all' AND rooms_bucket = 'all'"""
+               WHERE geo_level = 'departement' AND period_type = 'year' AND NOT is_partial
+                 AND property_type = 'all' AND rooms_bucket = 'all'"""
     current = con.execute(query.format(src="kpi_price")).fetchone()[0]
     previous = con.execute(query.format(src=f"'{previous_marts.as_posix()}'")).fetchone()[0]
     drift = abs(current / previous - 1)
