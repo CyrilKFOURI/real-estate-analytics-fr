@@ -22,7 +22,7 @@ const ROOMS: { value: RoomsBucket; label: string }[] = [
 
 type ChipProps = { label: string; selected: boolean; onPress: () => void };
 
-const Chip = ({ label, selected, onPress }: ChipProps) => {
+export const Chip = ({ label, selected, onPress }: ChipProps) => {
   const theme = useTheme();
   return (
     <Pressable

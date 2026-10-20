@@ -17,6 +17,7 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - app unit tests (core-kpi): `cd apps/app && npm test`
 - price model: `cd ml && uv run rea-ml train` (writes data/models/rea-price-check-fr/<date>/, never uploads) · tests `cd ml && uv run pytest -q`
 - section/commune points only: `cd pipeline && uv run rea locations`
+- estimate API for the property dashboard: `cd ml && uv run rea-ml serve` (http://localhost:8787, local only: it returns individual DVF sales)
 
 ## Code structure
 - pipeline/src/rea_pipeline: ingest (S1), refs + geo (S0), clean (S2), marts/rents/insee (S3), validate (gates), publish (S5), cli

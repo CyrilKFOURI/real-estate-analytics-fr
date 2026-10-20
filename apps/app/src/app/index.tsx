@@ -34,6 +34,13 @@ export default function SearchScreen() {
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView edges={['bottom']} style={styles.content}>
+        <Link
+          href="/property"
+          style={StyleSheet.flatten([styles.propertyCta, { borderColor: theme.accent }])}>
+          <ThemedText type="smallBold" themeColor="accent">
+            Vous avez un bien en vue ? Analysez-le →
+          </ThemedText>
+        </Link>
         <ThemedText type="subtitle">Quelle ville ?</ThemedText>
         <ThemedText themeColor="textSecondary">
           Prix de vente (DVF), loyers (ANIL) et contexte INSEE pour chaque commune.
@@ -104,4 +111,5 @@ const styles = StyleSheet.create({
   quickPicks: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   quickPick: { borderWidth: 1, borderRadius: 999, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },
   result: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  propertyCta: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 999, paddingHorizontal: Spacing.four, paddingVertical: 10 },
 });

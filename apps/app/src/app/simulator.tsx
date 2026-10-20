@@ -98,7 +98,16 @@ const MARKET_LABELS = { below: 'sous la fourchette du marché', within: 'dans la
 
 export default function SimulatorScreen() {
   const theme = useTheme();
-  const params = useLocalSearchParams<{ level?: GeoLevel; code?: string; type?: PropertyType; rooms?: RoomsBucket }>();
+  const params = useLocalSearchParams<{
+    level?: GeoLevel;
+    code?: string;
+    type?: PropertyType;
+    rooms?: RoomsBucket;
+    // values of a specific property, sent by the property dashboard; they win over the commune prefill
+    price?: string;
+    surface?: string;
+    rent?: string;
+  }>();
   const [form, setForm] = useState<Form>(DEFAULT_FORM);
   const [isNewBuild, setIsNewBuild] = useState(false);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
@@ -109,16 +118,24 @@ export default function SimulatorScreen() {
     }
     const segment: Segment = { propertyType: params.type ?? 'apartment', rooms: params.rooms ?? 'all' };
     let current = true;
+    const overrides: Partial<Form> = {
+      ...(params.price && {
+        price: params.price,
+        downPayment: round(Number(params.price) * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare, 500),
+      }),
+      ...(params.surface && { surfaceM2: params.surface }),
+      ...(params.rent && { rentMonthly: params.rent, taxeFonciereYearly: params.rent }),
+    };
     prefillFromPlace(params.level, params.code, segment).then((result) => {
       if (current && result) {
         setPrefill(result);
-        setForm((previous) => ({ ...previous, ...result.form }));
+        setForm((previous) => ({ ...previous, ...result.form, ...overrides }));
       }
     });
     return () => {
       current = false;
     };
-  }, [params.level, params.code, params.type, params.rooms]);
+  }, [params.level, params.code, params.type, params.rooms, params.price, params.surface, params.rent]);
 
   const result = useMemo(() => analyzeDeal(toInput(form, isNewBuild), prefill?.market), [form, isNewBuild, prefill]);
   const field = (key: keyof Form) => ({ value: form[key], onChange: (text: string) => setForm({ ...form, [key]: text }) });
