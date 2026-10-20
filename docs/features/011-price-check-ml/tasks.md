@@ -1,0 +1,12 @@
+# 011 tasks
+- [x] Pipeline prerequisites: land, Carrez, lots, dependencies, VEFA flag, id_parcelle/section, coordinates (section point from geo-DVF, commune fallback; 99.9 % at section level). Market KPIs exclude VEFA so they did not move.
+- [x] `ml/` project: config, dataset, features (time index, OOF location encodings, feature groups), modeling (LightGBM, grouped permutation selection, ridge + commune baselines, conformal intervals, metrics by segment), train (out-of-time evaluation + final refit), package (HF-ready folder + generated model card), standalone inference with exact TreeSHAP
+- [x] 10 tests (encodings without leakage, smoothing, time index, conformal coverage, metrics, packaged folder runs standalone, SHAP adds up)
+- [ ] First full training run + read the metrics honestly
+- [ ] /estimate API and UI block (with 012)
+- Decisions:
+  - One LightGBM model (Huber loss) on log €/m² with the département trend removed; intervals by split-conformal, not separate quantile models.
+  - Location = section point for every sale (train and serve), never the exact parcel: no train/serve skew.
+  - SHAP via LightGBM `pred_contrib` (exact), no `shap`/`lime` dependency. LIME left out of the product (unstable); can be added in a notebook for comparison.
+  - Published encodings keep only areas with ≥ 10 sales (DVF re-identification rule).
+  - Nothing is uploaded to Hugging Face; licence to choose before publishing (`license: other` in the card).

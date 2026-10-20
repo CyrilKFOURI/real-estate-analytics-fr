@@ -1,5 +1,6 @@
 """`uv run rea-ml train` → evaluates the recipe, trains the final model, writes the package.
-`uv run rea-ml predict <model folder> <json>` → estimates one or more properties."""
+`uv run rea-ml predict <model folder> <json>` → estimates one or more properties.
+`uv run rea-ml serve` → local API for the app (latest model)."""
 import argparse
 import json
 from datetime import datetime, timezone
@@ -31,3 +32,7 @@ def main() -> None:
 
         model = PriceCheckModel.load(args.folder)
         print(json.dumps(model.estimate(json.loads(args.properties)), indent=2, ensure_ascii=False))
+    if args.command == "serve":
+        from .api import serve as run_server
+
+        run_server(args.port)

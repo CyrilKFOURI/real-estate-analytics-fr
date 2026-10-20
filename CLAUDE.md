@@ -15,9 +15,12 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - lint: `cd apps/app && npx expo lint`
 - typecheck: `cd apps/app && npx tsc --noEmit`
 - app unit tests (core-kpi): `cd apps/app && npm test`
+- price model: `cd ml && uv run rea-ml train` (writes data/models/rea-price-check-fr/<date>/, never uploads) · tests `cd ml && uv run pytest -q`
+- section/commune points only: `cd pipeline && uv run rea locations`
 
 ## Code structure
-- pipeline/src/rea_pipeline: ingest (S1), refs (S0), clean (S2), marts (S3), validate (gates), cli
+- pipeline/src/rea_pipeline: ingest (S1), refs + geo (S0), clean (S2), marts/rents/insee (S3), validate (gates), publish (S5), cli
+- ml/src/rea_ml: config, dataset, features, modeling, train, package, inference (inference.py + features.py ship inside the model folder)
 - data/ (gitignored): raw, clean, marts, serve (JSON for the app), runs
 - apps/app/src: app/ (routes), components/, core-kpi/ (pure deal maths + FR rules, no React), data/ (types, fetch, format, search, select); read apps/app/AGENTS.md before touching Expo APIs
 - docs/KPI_SPEC.md, docs/PIPELINE_RUN_SPEC.md: what KPIs and how they're run
@@ -48,4 +51,5 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - A DVF release is a rolling window of half-years (e.g. 2021-H2 → 2026-H1): edge years are is_partial, compare them by half-year only.
 - ANIL rent files are Windows-1252 (contain 'œ'), not latin-1. On Windows, write converted text with newline="" or CRLF becomes CR CR LF.
 - Expo Router `<Link asChild>` throws on array styles in dev: use `<Link style={...}>` without asChild.
+- Price model: never use exact parcel coordinates (serve only has section points); never put a sale's own price in its features (OOF encodings).
 - Paris/Lyon/Marseille appear in DVF as arrondissement codes (751xx, 6938x, 132xx).
