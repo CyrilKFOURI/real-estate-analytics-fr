@@ -16,6 +16,8 @@ GEO_LEVELS = {
     "commune": "code_commune",
     "arrondissement": "code_arrondissement",
     "departement": "code_departement",
+    "region": "code_region",
+    "france": "'FR'",
 }
 
 

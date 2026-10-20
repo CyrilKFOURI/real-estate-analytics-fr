@@ -13,13 +13,13 @@ HEADER = ["No disposition", "Date mutation", "Nature mutation", "Valeur fonciere
           "Type local", "Surface reelle bati", "Nombre pieces principales"]
 
 COMMUNES = [
-    {"code": "01001", "type": "commune-actuelle", "nom": "A", "departement": "01"},
-    {"code": "01002", "type": "commune-deleguee", "chefLieu": "01001", "nom": "Old", "departement": "01"},
+    {"code": "01001", "type": "commune-actuelle", "nom": "A", "departement": "01", "region": "84"},
+    {"code": "01002", "type": "commune-deleguee", "chefLieu": "01001", "nom": "Old", "departement": "01", "region": "84"},
     # the chef-lieu is also listed as its own delegated commune: must not duplicate sales
-    {"code": "01001", "type": "commune-deleguee", "chefLieu": "01001", "nom": "A", "departement": "01"},
-    {"code": "75056", "type": "commune-actuelle", "nom": "Paris", "departement": "75"},
-    {"code": "75101", "type": "arrondissement-municipal", "commune": "75056", "nom": "Paris 1", "departement": "75"},
-    {"code": "97102", "type": "commune-actuelle", "nom": "Anse-Bertrand", "departement": "971"},
+    {"code": "01001", "type": "commune-deleguee", "chefLieu": "01001", "nom": "A", "departement": "01", "region": "84"},
+    {"code": "75056", "type": "commune-actuelle", "nom": "Paris", "departement": "75", "region": "11"},
+    {"code": "75101", "type": "arrondissement-municipal", "commune": "75056", "nom": "Paris 1", "departement": "75", "region": "11"},
+    {"code": "97102", "type": "commune-actuelle", "nom": "Anse-Bertrand", "departement": "971", "region": "01"},
 ]
 
 
@@ -116,7 +116,7 @@ def _add_sales(con, year: int, half: int, price_m2: float, n: int = 12) -> None:
     for i in range(n):
         con.execute(
             """INSERT INTO dvf_sales VALUES (?, ?, ?, ?, ?, 50, ?, 'apartment', 2,
-               '01001', NULL, '01', NULL, NULL)""",
+               '01001', NULL, '01', '84', NULL, NULL)""",
             [f"{year}-{half}-{i}", f"{year}-{month:02d}-01", year, half, price_m2 * 50, price_m2],
         )
 
@@ -151,3 +151,14 @@ def test_yoy_on_full_years_and_half_years(con):
 
     # 2024 compared with partial 2023: no year-on-year
     assert _kpi(con, "2024")[1] is None
+
+
+def test_region_and_france_levels(con):
+    _add_sales(con, 2025, 1, 3000)
+    marts.build_price_kpis(con, "test")
+    levels = {
+        (level, code) for level, code in con.execute(
+            "SELECT DISTINCT geo_level, geo_code FROM kpi_price WHERE period = '2025-H1'"
+        ).fetchall()
+    }
+    assert ("region", "84") in levels and ("france", "FR") in levels

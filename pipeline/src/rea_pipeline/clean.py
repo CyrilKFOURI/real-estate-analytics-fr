@@ -102,6 +102,7 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
             c.code_arrondissement,
             CASE WHEN m.code_commune_raw LIKE '97%' THEN left(m.code_commune_raw, 3)
                  ELSE left(m.code_commune_raw, 2) END AS code_departement,
+            c.region AS code_region,
             m.longitude,
             m.latitude
         FROM per_mutation m

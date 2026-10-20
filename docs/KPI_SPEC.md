@@ -7,7 +7,7 @@ Legend — Tier: **MVP** / **V2** / **Later** · Kind: **M** = market (precomput
 
 ## 1. Market KPIs (precomputed, per `geo_level × geo_code × period × segment`)
 
-Geo levels: `commune` (INSEE code, 5 chars), `iris` (9 chars, V2), `departement`. Periods: `year`, `rolling_12m`, `half` (S1/S2). Segments: `apartment` / `house` × rooms bucket (1, 2, 3, 4, 5+) × `all`.
+Geo levels: `commune` (INSEE code, 5 chars), `arrondissement` (Paris/Lyon/Marseille), `departement`, `region`, `france`; `iris` (9 chars) in V2. Periods: `year`, `rolling_12m`, `half` (S1/S2). Segments: `apartment` / `house` × rooms bucket (1, 2, 3, 4, 5+) × `all`.
 
 | # | KPI | Formula / method | Source | Tier | Kept because |
 |---|---|---|---|---|---|
