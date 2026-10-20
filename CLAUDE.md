@@ -11,6 +11,7 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - download only: `cd pipeline && uv run rea ingest`
 - test: `cd pipeline && uv run pytest -q`
 - copy KPIs into the app: `cd pipeline && uv run rea sync-app`
+- scheduled update (rebuild only if a source changed): `cd pipeline && uv run rea auto`
 - app dev (web): `cd apps/app && npx expo start --web` (never with CI=1: it disables file watching)
 - lint: `cd apps/app && npx expo lint`
 - typecheck: `cd apps/app && npx tsc --noEmit`
@@ -53,5 +54,6 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - A DVF release is a rolling window of half-years (e.g. 2021-H2 → 2026-H1): edge years are is_partial, compare them by half-year only.
 - ANIL rent files are Windows-1252 (contain 'œ'), not latin-1. On Windows, write converted text with newline="" or CRLF becomes CR CR LF.
 - Expo Router `<Link asChild>` throws on array styles in dev: use `<Link style={...}>` without asChild.
+- INSEE and unpkg send no ETag: change detection must fall back to the content hash.
 - Price model: never use exact parcel coordinates (serve only has section points); never put a sale's own price in its features (OOF encodings).
 - Paris/Lyon/Marseille appear in DVF as arrondissement codes (751xx, 6938x, 132xx).

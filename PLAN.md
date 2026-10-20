@@ -9,7 +9,7 @@
 - [x] 004 Deal simulator: core-kpi D1–D9, D12 + screen, prefilled from commune KPIs
 - [ ] 005 Map: PMTiles choropleth of M1 / M9
 - [ ] 006 INSEE + DPE + REI: M11–M15, market score M17  (INSEE M11–M13 done: kpi_socio.parquet)
-- [ ] 007 Scheduled runs (Task Scheduler, upstream change check) + run reports
+- [x] 007 Scheduled runs: `rea auto` (change detection by ETag/SHA-256, rebuild only if needed) + PowerShell script; Task Scheduler registration left to the user (docs/PIPELINE_RUN_SPEC.md §4)
 - [x] 008 Browser extension: Manifest V3, no dependency, reads the open listing on click and opens the prefilled dashboard (apps/extension)
 - [ ] 009 Expo mobile build (iOS/Android)
 - [ ] 010 Tax regimes + IRR (D13, D14), BRRRR (D16)  (D13 first-year tax comparison done; IRR and BRRRR pending)

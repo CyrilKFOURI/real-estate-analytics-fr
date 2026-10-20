@@ -52,7 +52,14 @@ Order is enforced by `rea build`, which runs stages sequentially in one process 
 | Banque de France rates | monthly | monthly | append (feeds simulator defaults) |
 | COG | yearly (Jan) | January | full, then re-run S2+ |
 
-A weekly check job only polls upstream metadata (data.gouv.fr API `last_modified`) and triggers S1 if changed. On the laptop: Windows Task Scheduler; later the home server: cron/systemd timer.
+A weekly job runs `uv run rea auto` (script `pipeline/scripts/auto_update.ps1`, log `data/runs/auto.log`): it re-downloads only what changed (ETag, or SHA-256 when the server sends none), rebuilds S0→S5 only if a source changed, then refreshes the app data. Up to date = ~15 s, no download.
+
+Register it on the laptop (Windows Task Scheduler, Sunday 03:00), from PowerShell:
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\Users\cyril\Documents\2_Projects\23_Real_Estate_App\pipeline\scripts\auto_update.ps1"'
+Register-ScheduledTask -TaskName "RealEstateApp-auto-update" -Action $action -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+```
+On the future home server: a cron/systemd timer running the same command.
 
 ## 5. Validation gates
 - **V1 (clean):** row counts within ±20% of previous release per department; no null `code_commune`; sha256 logged.
