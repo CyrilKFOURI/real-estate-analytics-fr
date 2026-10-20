@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, dpe, geo, ingest, insee, localtax, marts, paths, publish, refs, rents, scores, validate
+from . import clean, dpe, geo, ingest, insee, localtax, mapdata, marts, paths, publish, refs, rents, scores, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
@@ -57,6 +57,7 @@ def build_dvf(skip_ingest: bool) -> int:
             stage("S1 ingest rents", rents.ingest_rents())
             stage("S1 ingest insee", insee.ingest_insee())
             stage("S1 ingest rei", localtax.ingest_rei())
+            stage("S1 ingest contours", mapdata.ingest_contours())
         refs.build_commune_map(con, ingest.communes_file())
         stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
 
@@ -172,6 +173,7 @@ def auto_update() -> int:
         "rents": rents.ingest_rents(),
         "insee": insee.ingest_insee(),
         "rei": localtax.ingest_rei(),
+        "contours": mapdata.ingest_contours(),
         "dpe": _ingest_dpe_standalone(),
     }
     changed = [name for name, result in ingested.items() if _changed(result)]

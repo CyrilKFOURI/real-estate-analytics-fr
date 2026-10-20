@@ -11,6 +11,7 @@ export default function RootLayout() {
         <Stack.Screen name="simulator" options={{ title: 'Simulateur' }} />
         <Stack.Screen name="property" options={{ title: 'Analyser un bien' }} />
         <Stack.Screen name="ranking" options={{ title: 'Classement des villes' }} />
+        <Stack.Screen name="map" options={{ title: 'Carte' }} />
       </Stack>
     </ThemeProvider>
   );

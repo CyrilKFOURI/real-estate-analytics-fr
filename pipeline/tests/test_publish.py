@@ -4,7 +4,15 @@ from pathlib import Path
 
 import duckdb
 
-from rea_pipeline import publish
+import pytest
+
+from rea_pipeline import mapdata, publish
+
+
+@pytest.fixture(autouse=True)
+def no_contours(tmp_path: Path, monkeypatch):
+    """Publication tests never read the real contours in data/raw (the map has its own test)."""
+    monkeypatch.setattr(mapdata, "CONTOURS_DIR", tmp_path / "no-contours")
 
 
 def _con() -> duckdb.DuckDBPyConnection:

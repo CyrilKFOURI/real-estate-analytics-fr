@@ -44,6 +44,9 @@ export default function SearchScreen() {
         <Link href="/ranking" style={StyleSheet.flatten([styles.propertyCta, { borderColor: theme.border }])}>
           <ThemedText type="smallBold">Où investir ? Le classement des villes →</ThemedText>
         </Link>
+        <Link href="/map" style={StyleSheet.flatten([styles.propertyCta, { borderColor: theme.border }])}>
+          <ThemedText type="smallBold">La carte de France des prix et rentabilités →</ThemedText>
+        </Link>
         <ThemedText type="subtitle">Quelle ville ?</ThemedText>
         <ThemedText themeColor="textSecondary">
           Prix de vente (DVF), loyers (ANIL) et contexte INSEE pour chaque commune.

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import paths
+from . import mapdata, paths
 
 SEARCHABLE_LEVELS = ("commune", "arrondissement")
 PRICE_FIELDS = ("period_type", "period", "is_partial", "property_type", "rooms_bucket", "n_sales",
@@ -168,9 +168,11 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
         encoding="utf-8",
     )
     ranking = _write_ranking(con, staging / "ranking.json", run_id)
+    have_contours = all((mapdata.CONTOURS_DIR / f"{n}.geojson.gz").exists() for n in mapdata.LAYERS.values())
+    map_layer = mapdata.write_map_layer(con, staging, min_sales) if have_contours else "no contours"
     shutil.rmtree(serve_dir, ignore_errors=True)
     staging.rename(serve_dir)
-    return {"files": len(sizes), "indexed": len(index), "ranked": ranking,
+    return {"files": len(sizes), "indexed": len(index), "ranked": ranking, "map": map_layer,
             "avg_kb": round(sum(sizes) / max(len(sizes), 1) / 1024, 1),
             "max_kb": round(max(sizes, default=0) / 1024, 1)}
 
