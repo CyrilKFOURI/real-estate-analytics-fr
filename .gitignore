@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
+__pycache__/
+.venv/
+data/raw/
+*.parquet
