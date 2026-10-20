@@ -133,3 +133,69 @@ def check_socio(con: duckdb.DuckDBPyConnection) -> list[Check]:
     ).fetchone()[0]
     checks.append(("socio coverage", coverage >= MIN_SOCIO_COVERAGE, f"{coverage:.1%} of priced communes"))
     return checks
+
+
+# Published 2025 rates: Paris ~20.9 % (low), Angers ~56.7 % (high).
+TAX_BANDS = {"75056": (0.18, 0.25), "49007": (0.50, 0.62)}
+MIN_TAX_COVERAGE = 0.99
+
+
+def check_local_tax(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    checks = []
+    for code, (low, high) in TAX_BANDS.items():
+        row = con.execute(
+            "SELECT tfpb_rate FROM kpi_local_tax WHERE geo_level = 'commune' AND geo_code = ?", [code]
+        ).fetchone()
+        ok = row is not None and low <= row[0] <= high
+        checks.append((f"tfpb rate {code}", ok, "missing" if row is None else f"{row[0]:.1%}"))
+    coverage = con.execute(
+        """SELECT count(t.geo_code)::DOUBLE / count(*) FROM
+               (SELECT DISTINCT geo_code FROM kpi_price WHERE geo_level = 'commune' AND n_sales >= 10) p
+           LEFT JOIN kpi_local_tax t ON t.geo_level = 'commune' AND t.geo_code = p.geo_code"""
+    ).fetchone()[0]
+    checks.append(("tax coverage", coverage >= MIN_TAX_COVERAGE, f"{coverage:.1%} of priced communes"))
+    return checks
+
+
+MIN_DPE_COVERAGE = 0.95
+
+
+def check_dpe(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    france, paris = (con.execute(
+        "SELECT share_fg FROM kpi_dpe WHERE geo_level = ? AND geo_code = ?", [level, code]
+    ).fetchone() for level, code in (("france", "FR"), ("commune", "75056")))
+    coverage = con.execute(
+        """SELECT count(d.geo_code)::DOUBLE / count(*) FROM
+               (SELECT DISTINCT geo_code FROM kpi_price WHERE geo_level = 'commune' AND n_sales >= 10) p
+           LEFT JOIN kpi_dpe d ON d.geo_level = 'commune' AND d.geo_code = p.geo_code"""
+    ).fetchone()[0]
+    return [
+        ("share F/G France", france is not None and 0.05 <= france[0] <= 0.25,
+         "missing" if france is None else f"{france[0]:.1%}"),
+        # Paris has many small old flats: more F/G than the national average
+        ("share F/G Paris > France", france is not None and paris is not None and paris[0] > france[0],
+         "missing" if paris is None else f"{paris[0]:.1%}"),
+        ("dpe coverage", coverage >= MIN_DPE_COVERAGE, f"{coverage:.1%} of priced communes"),
+    ]
+
+
+MIN_SCORE_COVERAGE = 0.95
+
+
+def check_scores(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    low, median, high = con.execute(
+        "SELECT min(score), median(score), max(score) FROM kpi_score"
+    ).fetchone()
+    coverage = con.execute(
+        """SELECT count(s.geo_code)::DOUBLE / count(*) FROM
+               (SELECT geo_level, geo_code, property_type FROM kpi_yield
+                WHERE geo_level = 'commune' AND rooms_bucket = 'all' AND n_sales >= 30
+                  AND period = (SELECT max(period) FROM kpi_price WHERE period_type = 'year' AND NOT is_partial)) y
+           LEFT JOIN kpi_score s USING (geo_level, geo_code, property_type)"""
+    ).fetchone()[0]
+    return [
+        ("score bounds", low is not None and low >= 0 and high <= 100, f"[{low}, {high}]"),
+        # percentile ranks: the median place scores around 50
+        ("score median", median is not None and 35 <= median <= 65, f"{median}"),
+        ("score coverage", coverage >= MIN_SCORE_COVERAGE, f"{coverage:.1%} of ranked communes"),
+    ]

@@ -33,6 +33,23 @@ export const TAX_RULES = {
   worksYears: 15,
 } as const;
 
+/** Capital gains tax on resale of a rental property (not a main residence). Check each finance law. */
+export const CAPITAL_GAINS_RULES = {
+  incomeTaxRate: 0.19,
+  socialRate: 0.172,
+  /** Flat allowances added to the purchase price when the real amounts are not documented. */
+  acquisitionFeesFlat: 0.075,
+  worksFlatAfter5Years: 0.15,
+  // Holding-period allowances: income tax exempt after 22 years, social charges after 30.
+  incomeTaxAllowance: { from: 6, perYear: 0.06, year22: 0.04 },
+  socialAllowance: { from: 6, perYear: 0.0165, year22: 0.016, after22PerYear: 0.09 },
+  /** Since the 2025 finance law, LMNP depreciation (except furniture) is added back to the gain. */
+  lmnpDepreciationAddedBack: true,
+} as const;
+
+/** BRRRR rules of thumb (Greene): offer ≤ 70 % of after-repair value minus works, refinance at 75 %. */
+export const BRRRR_RULES = { maxOfferShareOfArv: 0.7, refinanceLtv: 0.75 } as const;
+
 /** Prefill values, all editable in the simulator. */
 export const DEFAULTS = {
   downPaymentShare: 0.1,

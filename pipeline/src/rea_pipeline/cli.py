@@ -12,11 +12,15 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, geo, ingest, insee, marts, paths, publish, refs, rents, validate
+from . import clean, dpe, geo, ingest, insee, localtax, marts, paths, publish, refs, rents, scores, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
 PUBLISHED_SOCIO_KPIS = paths.MARTS / "kpi_socio.parquet"
+PUBLISHED_PRICE_BANDS = paths.MARTS / "kpi_price_bands.parquet"
+PUBLISHED_LOCAL_TAX = paths.MARTS / "kpi_local_tax.parquet"
+PUBLISHED_DPE = paths.MARTS / "kpi_dpe.parquet"
+PUBLISHED_SCORES = paths.MARTS / "kpi_score.parquet"
 APP_PUBLIC_DATA = paths.ROOT.parent / "apps" / "app" / "public" / "data"
 
 
@@ -52,6 +56,7 @@ def build_dvf(skip_ingest: bool) -> int:
             stage("S1 ingest geo-dvf", geo.ingest_geo_dvf())
             stage("S1 ingest rents", rents.ingest_rents())
             stage("S1 ingest insee", insee.ingest_insee())
+            stage("S1 ingest rei", localtax.ingest_rei())
         refs.build_commune_map(con, ingest.communes_file())
         stage("S0 refs", con.execute("SELECT count(*) FROM commune_map").fetchone()[0])
 
@@ -68,6 +73,8 @@ def build_dvf(skip_ingest: bool) -> int:
 
         marts.build_price_kpis(con, run_id)
         stage("S3 marts", con.execute("SELECT count(*) FROM kpi_price").fetchone()[0])
+        marts.build_price_band_kpis(con)
+        stage("S3 price bands", con.execute("SELECT count(*) FROM kpi_price_bands").fetchone()[0])
         _gate(
             "V2",
             validate.check_reference_bands(con)
@@ -85,6 +92,25 @@ def build_dvf(skip_ingest: bool) -> int:
         stage("S3 socio", con.execute("SELECT count(*) FROM kpi_socio").fetchone()[0])
         _gate("V4", validate.check_socio(con), report)
 
+        tax_year, rei_csv = localtax.rei_file()
+        localtax.build_local_tax_kpis(con, rei_csv, tax_year)
+        refs.build_rent_control(con)
+        stage("S3 local tax + rent control", {
+            "communes_with_rate": con.execute("SELECT count(*) FROM kpi_local_tax").fetchone()[0],
+            "rent_control_codes": con.execute("SELECT count(*) FROM rent_control").fetchone()[0],
+        })
+        _gate("V5", validate.check_local_tax(con), report)
+
+        if not skip_ingest:
+            stage("S1 ingest dpe", dpe.ingest_dpe(con))
+        dpe.build_dpe_kpis(con, dpe.counts_file())
+        stage("S3 dpe", con.execute("SELECT count(*) FROM kpi_dpe").fetchone()[0])
+        _gate("V6", validate.check_dpe(con), report)
+
+        scores.build_scores(con)
+        stage("S4 scores", con.execute("SELECT count(*) FROM kpi_score").fetchone()[0])
+        _gate("V7", validate.check_scores(con), report)
+
         # publish atomically: write every file next to its target, then rename them all
         price_next = PUBLISHED_PRICE_KPIS.with_name("kpi_price.next.parquet")
         yield_next = PUBLISHED_YIELD_KPIS.with_name("kpi_yield.next.parquet")
@@ -95,6 +121,18 @@ def build_dvf(skip_ingest: bool) -> int:
         price_next.replace(PUBLISHED_PRICE_KPIS)
         yield_next.replace(PUBLISHED_YIELD_KPIS)
         socio_next.replace(PUBLISHED_SOCIO_KPIS)
+        bands_next = PUBLISHED_PRICE_BANDS.with_name("kpi_price_bands.next.parquet")
+        stage("publish price bands", marts.export_price_bands(con, bands_next))
+        bands_next.replace(PUBLISHED_PRICE_BANDS)
+        tax_next = PUBLISHED_LOCAL_TAX.with_name("kpi_local_tax.next.parquet")
+        stage("publish local tax", localtax.export_published(con, tax_next))
+        tax_next.replace(PUBLISHED_LOCAL_TAX)
+        dpe_next = PUBLISHED_DPE.with_name("kpi_dpe.next.parquet")
+        stage("publish dpe", dpe.export_published(con, dpe_next))
+        dpe_next.replace(PUBLISHED_DPE)
+        scores_next = PUBLISHED_SCORES.with_name("kpi_score.next.parquet")
+        stage("publish scores", scores.export_published(con, scores_next))
+        scores_next.replace(PUBLISHED_SCORES)
         stage("S5 publish json", publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id))
         report["status"] = "success"
     except GateFailed as failed:
@@ -118,6 +156,12 @@ def _changed(result) -> bool:
     return isinstance(result, dict) and result.get("skipped") is False
 
 
+def _ingest_dpe_standalone() -> dict:
+    con = duckdb.connect()
+    refs.build_commune_map(con, ingest.communes_file())
+    return dpe.ingest_dpe(con)
+
+
 def auto_update() -> int:
     """Scheduled entry point (docs/PIPELINE_RUN_SPEC.md §4): download what changed upstream,
     rebuild and refresh the app only if something did. Exit code 0 when up to date or rebuilt."""
@@ -127,6 +171,8 @@ def auto_update() -> int:
         "geo-dvf": geo.ingest_geo_dvf(),
         "rents": rents.ingest_rents(),
         "insee": insee.ingest_insee(),
+        "rei": localtax.ingest_rei(),
+        "dpe": _ingest_dpe_standalone(),
     }
     changed = [name for name, result in ingested.items() if _changed(result)]
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -165,8 +211,12 @@ def main() -> None:
         con = duckdb.connect()
         refs.build_commune_map(con, ingest.communes_file())
         for table, path in (("kpi_price", PUBLISHED_PRICE_KPIS), ("kpi_yield", PUBLISHED_YIELD_KPIS),
-                            ("kpi_socio", PUBLISHED_SOCIO_KPIS)):
-            con.execute(f"CREATE TABLE {table} AS SELECT * FROM '{path.as_posix()}'")
+                            ("kpi_socio", PUBLISHED_SOCIO_KPIS), ("kpi_price_bands", PUBLISHED_PRICE_BANDS),
+                            ("kpi_local_tax", PUBLISHED_LOCAL_TAX), ("kpi_dpe", PUBLISHED_DPE),
+                            ("kpi_score", PUBLISHED_SCORES)):
+            if path.exists():
+                con.execute(f"CREATE TABLE {table} AS SELECT * FROM '{path.as_posix()}'")
+        refs.build_rent_control(con)
         run_id = con.execute("SELECT any_value(run_id) FROM kpi_price").fetchone()[0]
         print(json.dumps(publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id), indent=2))
     if args.command == "locations":

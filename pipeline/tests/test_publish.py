@@ -42,6 +42,30 @@ def _con() -> duckdb.DuckDBPyConnection:
     return con
 
 
+def _with_extras(con: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyConnection:
+    con.execute("CREATE TABLE kpi_local_tax AS SELECT 'commune' AS geo_level, '49007' AS geo_code, "
+                "2025 AS tax_year, 0.5665 AS tfpb_rate")
+    con.execute("CREATE TABLE rent_control AS SELECT '75101' AS code")
+    con.execute("CREATE TABLE kpi_score AS SELECT 'commune' AS geo_level, '49007' AS geo_code, '2025' AS period, "
+                "'apartment' AS property_type, 71.5 AS score, 7 AS n_criteria, ['jobs_growth_yearly'] AS strengths, "
+                "['gross_yield'] AS weaknesses, 0.33 AS rent_to_income")
+    return con
+
+
+def test_publish_adds_tax_rent_control_and_score(tmp_path: Path):
+    serve = tmp_path / "serve"
+    publish.publish(_with_extras(_con()), min_sales=10, run_id="r3", serve_dir=serve)
+    angers = json.loads((serve / "geo" / "commune" / "49007.json").read_text(encoding="utf-8"))
+    assert angers["local_tax"]["tfpb_rate"] == 0.5665
+    assert angers["score"]["apartment"]["score"] == 71.5
+    assert "rent_control" not in angers
+    paris1 = json.loads((serve / "geo" / "arrondissement" / "75101.json").read_text(encoding="utf-8"))
+    assert paris1["rent_control"] is True
+    ranking = json.loads((serve / "ranking.json").read_text(encoding="utf-8"))
+    row = dict(zip(ranking["fields"], ranking["rows"][0]))
+    assert row["score"] == 71.5 and row["tfpb_rate"] == 0.5665 and row["rent_control"] is False
+
+
 def test_publish_writes_index_and_geo_files(tmp_path: Path):
     serve = tmp_path / "serve"
     stats = publish.publish(_con(), min_sales=10, run_id="r1", serve_dir=serve)

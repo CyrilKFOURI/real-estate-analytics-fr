@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { analyzeDeal, type DealInput, type MarketReference } from '@/core-kpi/deal';
 import { DEFAULTS, FR_RULES, TAX_RULES } from '@/core-kpi/rules';
+import { breakEvenOccupancy, brrrr, leverageEffect, projectDeal } from '@/core-kpi/projection';
 import { compareTaxRegimes, type TaxRegime } from '@/core-kpi/tax';
 import { loadPlace } from '@/data/api';
 import { formatDecimal, formatEuros, formatEurosPerM2, formatPercent, formatSignedPercent } from '@/data/format';
@@ -56,7 +57,14 @@ const toInput = (form: Form, isNewBuild: boolean): DealInput => {
   return { ...values, isNewBuild };
 };
 
-type Prefill = { form: Partial<Form>; market?: MarketReference; label: string; rentNote?: string };
+type Prefill = {
+  form: Partial<Form>;
+  market?: MarketReference;
+  label: string;
+  rentNote?: string;
+  /** The commune's annualised price trend, used as the default resale assumption. */
+  priceTrend?: { cagr: number; since: number };
+};
 
 /** Typical property of the segment: median price, surface = median price / median €/m², ANIL rent. */
 const prefillFromPlace = async (level: GeoLevel, code: string, segment: Segment): Promise<Prefill | null> => {
@@ -72,6 +80,7 @@ const prefillFromPlace = async (level: GeoLevel, code: string, segment: Segment)
   return {
     label: `${place.name ?? code}, prix et surface médians ${year.period}`,
     market: { medianPriceM2: year.median_price_m2, p25PriceM2: year.p25_price_m2, p75PriceM2: year.p75_price_m2 },
+    priceTrend: year.cagr != null && year.cagr_since != null ? { cagr: year.cagr, since: year.cagr_since } : undefined,
     rentNote: rent
       ? `Loyer d'annonce ANIL ${formatDecimal(rent.rent_m2)} €/m² charges comprises : retirez les charges récupérables.`
       : undefined,
@@ -121,6 +130,8 @@ export default function SimulatorScreen() {
   const [isNewBuild, setIsNewBuild] = useState(false);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const [marginalRate, setMarginalRate] = useState(0.3);
+  const [horizon, setHorizon] = useState(15);
+  const [growth, setGrowth] = useState({ price: '', rent: '1,5', selling: '0', arv: '' });
 
   useEffect(() => {
     if (!params.level || !params.code) {
@@ -153,6 +164,25 @@ export default function SimulatorScreen() {
   const bestRegime = taxes
     .filter((tax) => tax.eligible)
     .reduce((best, tax) => (tax.cashFlowAfterTaxMonthly > best.cashFlowAfterTaxMonthly ? tax : best));
+  // resale assumption: the commune's own trend when known (capped to ±5 %/yr), else +1 %/yr
+  const trend = prefill?.priceTrend ? Math.max(-0.05, Math.min(0.05, prefill.priceTrend.cagr)) : 0.01;
+  const priceGrowth = growth.price === '' ? trend : parseNumber(growth.price) / 100;
+  const projection = useMemo(
+    () =>
+      projectDeal(input, result, {
+        horizonYears: horizon,
+        priceGrowth,
+        rentGrowth: parseNumber(growth.rent) / 100,
+        sellingCostShare: parseNumber(growth.selling) / 100,
+        regime: bestRegime.regime,
+        marginalRate,
+      }),
+    [input, result, horizon, priceGrowth, growth.rent, growth.selling, bestRegime.regime, marginalRate],
+  );
+  const leverage = leverageEffect(input, result);
+  const occupancy = breakEvenOccupancy(input, result);
+  const arv = parseNumber(growth.arv);
+  const refinancing = arv > 0 ? brrrr(arv, result, input.works) : null;
   const field = (key: keyof Form) => ({ value: form[key], onChange: (text: string) => setForm({ ...form, [key]: text }) });
   const cashFlowColor = result.cashFlowMonthly >= 0 ? 'positive' : 'negative';
 
@@ -259,6 +289,108 @@ export default function SimulatorScreen() {
             {TAX_RULES.furnitureYears} ans ; depuis 2025, les amortissements sont réintégrés dans la plus-value à la revente.
             Comptabilité LMNP réel : ~300 à 600 € / an non comptés.
           </ThemedText>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="smallBold">Sur la durée, revente comprise ({REGIME_LABELS[bestRegime.regime]})</ThemedText>
+          <View style={styles.rateRow}>
+            <ThemedText type="small" themeColor="textSecondary">
+              Revente après :
+            </ThemedText>
+            {[10, 15, 20].map((years) => (
+              <Chip key={years} label={`${years} ans`} selected={horizon === years} onPress={() => setHorizon(years)} />
+            ))}
+          </View>
+          <View style={styles.tiles}>
+            <KpiTile
+              label="Taux de rendement interne (TRI)"
+              value={formatPercent(projection.irr)}
+              detail={`Apport ${formatEuros(projection.equityInvested)} · multiplié par ${
+                projection.equityMultiple == null ? '—' : formatDecimal(projection.equityMultiple)
+              }`}
+            />
+            <KpiTile
+              label={`Revente dans ${horizon} ans`}
+              value={formatEuros(projection.salePrice)}
+              detail={`Net après crédit restant et impôt sur la plus-value (${formatEuros(projection.capitalGainsTax)}) : ${formatEuros(projection.netSaleProceeds)}`}
+            />
+            <KpiTile
+              label="Effet de levier du crédit"
+              value={leverage.positive ? 'Positif' : 'Négatif'}
+              detailColor={leverage.positive ? 'positive' : 'negative'}
+              detail={`Le bien rapporte ${formatPercent(leverage.propertyReturn)} net, le crédit coûte ${formatPercent(leverage.debtCost)}`}
+            />
+            <KpiTile
+              label="Taux d'occupation minimal"
+              value={formatPercent(occupancy)}
+              detailColor={occupancy != null && occupancy > 0.92 ? 'negative' : undefined}
+              detail="En dessous, les loyers ne couvrent plus charges fixes et crédit"
+            />
+          </View>
+          <View style={styles.fields}>
+            <NumberField
+              label="Évolution du prix"
+              unit="% / an"
+              value={growth.price}
+              onChange={(text) => setGrowth({ ...growth, price: text })}
+              hint={
+                growth.price === ''
+                  ? prefill?.priceTrend
+                    ? `Tendance de la commune depuis ${prefill.priceTrend.since} : ${formatSignedPercent(prefill.priceTrend.cagr)} / an`
+                    : 'Par défaut +1 % / an'
+                  : undefined
+              }
+            />
+            <NumberField
+              label="Évolution des loyers et charges"
+              unit="% / an"
+              value={growth.rent}
+              onChange={(text) => setGrowth({ ...growth, rent: text })}
+            />
+            <NumberField
+              label="Frais de vente"
+              unit="%"
+              value={growth.selling}
+              onChange={(text) => setGrowth({ ...growth, selling: text })}
+            />
+          </View>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+            Plus-value : abattements pour durée de détention (impôt nul après 22 ans, prélèvements sociaux après 30),
+            forfaits frais d&apos;acquisition 7,5 % et travaux 15 % après 5 ans ; surtaxe au-delà de 50 000 € de
+            plus-value non comptée.
+          </ThemedText>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="smallBold">Stratégie BRRRR (acheter, rénover, louer, refinancer)</ThemedText>
+          <View style={styles.fields}>
+            <NumberField
+              label="Valeur après travaux"
+              unit="€"
+              value={growth.arv}
+              onChange={(text) => setGrowth({ ...growth, arv: text })}
+              hint="Prix d'un bien rénové comparable : fourchette haute de la commune"
+            />
+          </View>
+          {refinancing && (
+            <View style={styles.tiles}>
+              <KpiTile
+                label="Prix d'achat maximum (règle des 70 %)"
+                value={formatEuros(refinancing.maxOffer)}
+                detailColor={input.price <= refinancing.maxOffer ? 'positive' : 'negative'}
+                detail={input.price <= refinancing.maxOffer ? 'Le prix respecte la règle' : 'Prix trop élevé pour la règle'}
+              />
+              <KpiTile
+                label="Refinancement à 75 %"
+                value={formatEuros(refinancing.refinance)}
+                detail={
+                  refinancing.allCashBack
+                    ? `Tout l'apport récupéré, ${formatEuros(refinancing.cashOut)} en plus`
+                    : `Reste investi : ${formatEuros(refinancing.cashLeft)}`
+                }
+              />
+            </View>
+          )}
         </View>
 
         <Section title="Le bien">

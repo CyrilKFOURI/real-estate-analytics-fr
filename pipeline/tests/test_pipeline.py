@@ -196,3 +196,47 @@ def test_region_and_france_levels(con):
         ).fetchall()
     }
     assert ("region", "84") in levels and ("france", "FR") in levels
+
+
+def test_cagr_since_first_complete_year_and_median_surface(con):
+    _add_sales(con, 2023, 2, 3000)  # 2023 partial: not a base year
+    for year, price in ((2024, 3000), (2025, 3630)):
+        _add_sales(con, year, 1, price)
+        _add_sales(con, year, 2, price)
+    marts.build_price_kpis(con, "test")
+    cagr, since, surface = con.execute(
+        """SELECT cagr, cagr_since, median_surface_m2 FROM kpi_price
+           WHERE geo_level = 'commune' AND geo_code = '01001' AND period = '2025'
+             AND property_type = 'apartment' AND rooms_bucket = 'all'"""
+    ).fetchone()
+    assert since == 2024 and cagr == pytest.approx(0.21)
+    assert surface == 50
+
+
+def test_price_bands_share_sums_to_one(con):
+    _add_sales(con, 2025, 1, 1000)  # 12 sales at 50 000 €
+    _add_sales(con, 2025, 2, 5000)  # 12 sales at 250 000 €
+    marts.build_price_band_kpis(con)
+    shares = dict(con.execute(
+        """SELECT band, share FROM kpi_price_bands WHERE geo_level = 'commune' AND geo_code = '01001'
+           AND year = 2025 AND property_type = 'apartment' ORDER BY band_order"""
+    ).fetchall())
+    assert shares["0-100k"] == pytest.approx(0.5) and shares["200-300k"] == pytest.approx(0.5)
+    assert shares["500k+"] == 0 and sum(shares.values()) == pytest.approx(1)
+
+
+def test_rent_control_resolves_names_and_arrondissements(con, tmp_path):
+    config = tmp_path / "rent_control.json"
+    config.write_text(json.dumps({"communes": [{"name": "Paris", "departement": "75"},
+                                               {"name": "Old", "departement": "01"}]}), encoding="utf-8")
+    refs.build_rent_control(con, config)
+    codes = {c for (c,) in con.execute("SELECT code FROM rent_control").fetchall()}
+    # a merged commune name resolves to its current commune; Paris brings its arrondissements
+    assert codes == {"75056", "75101", "01001"}
+
+
+def test_rent_control_unknown_name_fails(con, tmp_path):
+    config = tmp_path / "rent_control.json"
+    config.write_text(json.dumps({"communes": [{"name": "Atlantis", "departement": "01"}]}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        refs.build_rent_control(con, config)
