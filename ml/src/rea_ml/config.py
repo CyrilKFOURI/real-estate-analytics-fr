@@ -50,9 +50,9 @@ class Training:
         default_factory=lambda: {
             "objective": "huber",  # robust to the non-market sales that cleaning cannot catch
             "alpha": 0.35,  # huber threshold on log price: errors above ~40 % count linearly
-            "learning_rate": 0.05,
-            "num_leaves": 255,
-            "min_data_in_leaf": 100,
+            "learning_rate": 0.1,
+            "num_leaves": 127,
+            "min_data_in_leaf": 200,
             "feature_fraction": 0.8,
             "bagging_fraction": 0.8,
             "bagging_freq": 1,
@@ -60,8 +60,10 @@ class Training:
             "verbose": -1,
         }
     )
-    max_rounds: int = 5_000
-    early_stopping_rounds: int = 200
+    max_rounds: int = 3_000
+    early_stopping_rounds: int = 100
+    # feature selection compares groups: a 1 M-sale subsample of the training period is enough
+    selection_train_sample: int = 1_000_000
     selection_sample: int = 300_000  # validation rows used for permutation importance
     selection_repeats: int = 3
     interval_coverage: float = 0.80  # P10–P90

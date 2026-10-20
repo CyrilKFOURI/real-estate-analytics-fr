@@ -16,6 +16,8 @@ export const Colors = {
     textSecondary: '#60646C',
     border: '#E0E1E6',
     accent: '#1F5FD1',
+    // text on an accent background (white fails contrast on the light dark-mode accent)
+    onAccent: '#FFFFFF',
     positive: '#1A7F4B',
     negative: '#C2362B',
     warningBackground: '#FFF4D6',
@@ -29,6 +31,7 @@ export const Colors = {
     textSecondary: '#B0B4BA',
     border: '#2E3135',
     accent: '#6EA1FF',
+    onAccent: '#0B1220',
     positive: '#4CC38A',
     negative: '#FF7A6E',
     warningBackground: '#3A2C0A',

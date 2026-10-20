@@ -1,4 +1,4 @@
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -376,9 +376,23 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
   );
 };
 
+type ListingParams = { address?: string; type?: string; surface?: string; rooms?: string; price?: string };
+
+/** Values sent by the browser extension (apps/extension) or a shared link; the user still confirms. */
+const formFromParams = (params: ListingParams): Form => ({
+  ...INITIAL_FORM,
+  ...(params.address && { address: params.address }),
+  ...((params.type === 'apartment' || params.type === 'house') && { propertyType: params.type }),
+  ...(params.surface && { surface: params.surface }),
+  ...(params.rooms && { rooms: params.rooms }),
+  ...(params.price && { askedPrice: params.price }),
+});
+
 export default function PropertyScreen() {
   const theme = useTheme();
-  const [form, setForm] = useState<Form>(INITIAL_FORM);
+  const params = useLocalSearchParams<ListingParams>();
+  const [form, setForm] = useState<Form>(() => formFromParams(params));
+  const fromListing = Boolean(params.price || params.surface);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -421,6 +435,11 @@ export default function PropertyScreen() {
             publiques. Une estimation, pas une expertise.
           </ThemedText>
         </View>
+        {fromListing && (
+          <ThemedText type="small" themeColor="warningText">
+            Champs repris de l&apos;annonce : vérifiez-les et complétez l&apos;adresse exacte avant d&apos;analyser.
+          </ThemedText>
+        )}
         <PropertyForm form={form} onChange={setForm} />
         <Pressable
           accessibilityRole="button"
@@ -428,9 +447,9 @@ export default function PropertyScreen() {
           onPress={analyze}
           style={[styles.submit, { backgroundColor: theme.accent, opacity: loading || form.address.trim().length < 5 ? 0.5 : 1 }]}>
           {loading ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={theme.onAccent} />
           ) : (
-            <ThemedText type="smallBold" style={styles.submitLabel}>
+            <ThemedText type="smallBold" themeColor="onAccent">
               Analyser
             </ThemedText>
           )}
@@ -452,7 +471,6 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   fields: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   submit: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: Spacing.five, paddingVertical: 12, minWidth: 140, alignItems: 'center' },
-  submitLabel: { color: '#ffffff' },
   analysis: { gap: Spacing.five },
   block: { gap: Spacing.three },
   blockTitle: { fontSize: 22, lineHeight: 28 },

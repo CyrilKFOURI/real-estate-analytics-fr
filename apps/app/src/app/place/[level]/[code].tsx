@@ -168,7 +168,7 @@ export default function PlaceScreen() {
               params: { level: place.level, code: place.code, type: segment.propertyType, rooms: segment.rooms },
             }}
             style={StyleSheet.flatten([styles.cta, { backgroundColor: theme.accent }])}>
-            <ThemedText type="smallBold" style={styles.ctaLabel}>
+            <ThemedText type="smallBold" themeColor="onAccent">
               Simuler un achat ici →
             </ThemedText>
           </Link>
@@ -240,5 +240,4 @@ const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   section: { gap: Spacing.two },
   cta: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: Spacing.four, paddingVertical: 12 },
-  ctaLabel: { color: '#ffffff' },
 });

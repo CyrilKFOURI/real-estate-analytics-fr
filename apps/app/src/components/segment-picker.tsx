@@ -34,7 +34,7 @@ export const Chip = ({ label, selected, onPress }: ChipProps) => {
         { borderColor: selected ? theme.accent : theme.border },
         selected && { backgroundColor: theme.accent },
       ]}>
-      <ThemedText type="small" style={selected ? styles.selectedLabel : undefined}>
+      <ThemedText type="small" themeColor={selected ? 'onAccent' : undefined}>
         {label}
       </ThemedText>
     </Pressable>
@@ -80,5 +80,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
-  selectedLabel: { color: '#ffffff' },
 });

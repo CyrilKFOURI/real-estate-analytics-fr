@@ -40,7 +40,7 @@ def fit_lightgbm(
         train_set,
         num_boost_round=training.max_rounds,
         valid_sets=[valid_set],
-        callbacks=[lgb.early_stopping(training.early_stopping_rounds, verbose=False), lgb.log_evaluation(500)],
+        callbacks=[lgb.early_stopping(training.early_stopping_rounds, verbose=False), lgb.log_evaluation(100)],
     )
 
 
@@ -85,6 +85,9 @@ def select_groups(
     """One backward step: drop groups whose permutation importance is not above noise, then
     keep the reduced set only if the validation error does not get worse."""
     all_groups = list(FEATURE_GROUPS)
+    if len(x_train) > training.selection_train_sample:
+        rows = np.random.default_rng(training.seed).choice(len(x_train), training.selection_train_sample, replace=False)
+        x_train, y_train = x_train.iloc[rows], y_train[rows]
     full = fit_lightgbm(x_train[columns_of(all_groups)], y_train, x_valid[columns_of(all_groups)], y_valid, training)
     sample = x_valid.sample(min(training.selection_sample, len(x_valid)), random_state=training.seed)
     importances = permutation_importance(

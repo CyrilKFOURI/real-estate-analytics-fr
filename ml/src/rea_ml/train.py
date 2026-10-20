@@ -67,9 +67,12 @@ def evaluate_recipe(config: Config, sales: pd.DataFrame, socio: pd.DataFrame) ->
     x = {name: build_features(splits[name], encodings[name], socio) for name in splits}
     log.info("features built in %ss", elapsed())
 
-    groups, importances, selection, model = select_groups(x["train"], y["train"], x["valid"], y["valid"], config.training)
+    groups, importances, selection, _ = select_groups(x["train"], y["train"], x["valid"], y["valid"], config.training)
     columns = columns_of(groups)
-    log.info("selected %d groups, best iteration %d (%ss)", len(groups), model.best_iteration, elapsed())
+    log.info("selected %d groups: %s (%ss)", len(groups), groups, elapsed())
+    # the evaluated model learns from the whole training period with the selected groups
+    model = fit_lightgbm(x["train"][columns], y["train"], x["valid"][columns], y["valid"], config.training)
+    log.info("evaluated model: best iteration %d (%ss)", model.best_iteration, elapsed())
 
     # intervals of the evaluated model: calibrated on valid, checked on test
     valid_segments = ConformalIntervals.segment(valid, encodings["valid"])

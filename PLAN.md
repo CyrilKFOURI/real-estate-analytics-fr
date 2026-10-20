@@ -10,7 +10,7 @@
 - [ ] 005 Map: PMTiles choropleth of M1 / M9
 - [ ] 006 INSEE + DPE + REI: M11–M15, market score M17  (INSEE M11–M13 done: kpi_socio.parquet)
 - [ ] 007 Scheduled runs (Task Scheduler, upstream change check) + run reports
-- [ ] 008 Browser extension (WXT) annotating listing pages
+- [x] 008 Browser extension: Manifest V3, no dependency, reads the open listing on click and opens the prefilled dashboard (apps/extension)
 - [ ] 009 Expo mobile build (iOS/Android)
 - [ ] 010 Tax regimes + IRR (D13, D14), BRRRR (D16)  (D13 first-year tax comparison done; IRR and BRRRR pending)
 - [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
