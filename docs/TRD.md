@@ -3,7 +3,7 @@
 ## Stack
 - **Data pipeline:** Python 3.12, DuckDB, Polars, `uv` for envs and the `rea` CLI as task runner. Pytest.
 - **API:** small read-only service (FastAPI or Cloudflare Worker) over the SQLite serve DB. Decision deferred to slice 2.
-- **Web + mobile:** one TypeScript monorepo (pnpm + Turborepo): **Expo (React Native) with Expo Router**, web via `react-native-web`, so one codebase gives the site now and the phone app later. Maps: MapLibre (web) / MapLibre RN (mobile) with PMTiles.
+- **Web + mobile:** one TypeScript app with npm for now (`apps/app`; a pnpm/Turborepo monorepo only when core-kpi and the extension exist): **Expo (React Native) with Expo Router**, web via `react-native-web`, so one codebase gives the site now and the phone app later. Maps: MapLibre (web) / MapLibre RN (mobile) with PMTiles.
 - **Shared logic:** `packages/core-kpi` — pure TS functions for all deal KPIs (D1–D17) + rules config, unit-tested, used by app and extension.
 - **Browser extension (V2):** WXT (Chrome + Firefox), reuses `core-kpi`.
 

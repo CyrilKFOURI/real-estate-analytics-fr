@@ -12,11 +12,12 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, ingest, insee, marts, paths, refs, rents, validate
+from . import clean, ingest, insee, marts, paths, publish, refs, rents, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
 PUBLISHED_SOCIO_KPIS = paths.MARTS / "kpi_socio.parquet"
+APP_PUBLIC_DATA = paths.ROOT.parent / "apps" / "app" / "public" / "data"
 
 
 class GateFailed(Exception):
@@ -89,6 +90,7 @@ def build_dvf(skip_ingest: bool) -> int:
         price_next.replace(PUBLISHED_PRICE_KPIS)
         yield_next.replace(PUBLISHED_YIELD_KPIS)
         socio_next.replace(PUBLISHED_SOCIO_KPIS)
+        stage("S5 publish json", publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id))
         report["status"] = "success"
     except GateFailed as failed:
         report["status"] = f"failed at gate {failed}"
@@ -109,6 +111,7 @@ def main() -> None:
     build.add_argument("--skip-ingest", action="store_true", help="reuse files already in data/raw")
     sub.add_parser("ingest", help="S1 only: download refs, DVF, rents and INSEE")
     sub.add_parser("clean-runs", help="delete run folders of failed runs")
+    sub.add_parser("sync-app", help="copy data/serve into apps/app/public/data")
     args = parser.parse_args()
 
     if args.command == "build":
@@ -117,6 +120,9 @@ def main() -> None:
         print(json.dumps([ingest.ingest_refs(), *ingest.ingest_dvf(), rents.ingest_rents(),
                           insee.ingest_insee()],
                          indent=2, default=str))
+    if args.command == "sync-app":
+        publish.sync_app(APP_PUBLIC_DATA)
+        print(f"Copied {paths.SERVE} -> {APP_PUBLIC_DATA}")
     if args.command == "clean-runs":
         for run in paths.RUNS.glob("*"):
             manifest = run / "manifest.json"
