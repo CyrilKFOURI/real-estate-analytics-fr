@@ -5,13 +5,15 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+      {/* dashboard screens draw their own shell (sidebar, top bar) */}
+      <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" options={{ title: 'Rendement immobilier' }} />
         <Stack.Screen name="place/[level]/[code]" options={{ title: '' }} />
         <Stack.Screen name="simulator" options={{ title: 'Simulateur' }} />
         <Stack.Screen name="property" options={{ title: 'Analyser un bien' }} />
         <Stack.Screen name="ranking" options={{ title: 'Classement des villes' }} />
         <Stack.Screen name="map" options={{ title: 'Carte' }} />
+        <Stack.Screen name="method" options={{ title: 'Méthode' }} />
       </Stack>
     </ThemeProvider>
   );
