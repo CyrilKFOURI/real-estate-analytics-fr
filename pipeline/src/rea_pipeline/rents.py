@@ -6,6 +6,12 @@ S1 ingest of the latest edition + S3 marts M8 (rent €/m²), M9 (gross yield) a
 Only the latest edition is used: ANIL states editions are not comparable over time. Rents
 apply to listings of the edition's year, so yields are only paired with price periods from
 that year onwards.
+
+Rent per m² falls with surface. ANIL gives flats at three reference surfaces (37, 52, 72 m²),
+so each commune gets a curve rent(s) = rent_52 × (s / 52)^slope, fitted on those three points,
+and every price cell is paired with the rent read at its own median surface (segmentation
+study §5). Houses have one point (92 m²) and borrow the commune's flat slope.
+ANIL rents are listing rents of unfurnished homes, charges included: the yield is labelled so.
 """
 import re
 from pathlib import Path
@@ -26,13 +32,33 @@ MIN_PLAUSIBLE_PRICE_M2 = 300
 # (one half-year, one room count). Such cells get no yield; validation checks they stay rare.
 MAX_PLAUSIBLE_YIELD = 0.30
 
-# ANIL file stem -> (property_type, rooms buckets of kpi_price it applies to)
+# ANIL file stem -> (property_type, reference surface in m² of the file's predictions)
 SEGMENTS = {
-    "pred-app-mef-dhup": ("apartment", ["all"]),
-    "pred-app12-mef-dhup": ("apartment", ["1", "2"]),
-    "pred-app3-mef-dhup": ("apartment", ["3", "4", "5+"]),
-    "pred-mai-mef-dhup": ("house", ["all"]),
+    "pred-app12-mef-dhup": ("apartment", 37),
+    "pred-app-mef-dhup": ("apartment", 52),
+    "pred-app3-mef-dhup": ("apartment", 72),
+    "pred-mai-mef-dhup": ("house", 92),
 }
+# the point each curve is anchored on: the all-flats file and the houses file
+REFERENCE_SURFACE = {"apartment": 52, "house": 92}
+# a rent is never extrapolated far from the surfaces ANIL observed
+SURFACE_BOUNDS = (25, 110)
+# rent per m² does not rise with surface; a fitted slope steeper than -0.8 is noise
+SLOPE_BOUNDS = (-0.8, 0.0)
+# ANIL's own caution rule: few listings in the commune or a poor model fit
+CAUTION_LISTINGS, CAUTION_R2 = 30, 0.5
+
+
+def rent_at(ref_rent_m2: float, ref_surface_m2: float, slope: float, surface_m2: float) -> float:
+    """Rent €/m² of a home of `surface_m2` on a commune's curve (surface clamped to SURFACE_BOUNDS)."""
+    surface = min(max(surface_m2, SURFACE_BOUNDS[0]), SURFACE_BOUNDS[1])
+    return ref_rent_m2 * (surface / ref_surface_m2) ** slope
+
+
+def rent_at_sql(ref: str, ref_surface: str, slope: str, surface: str) -> str:
+    """SQL twin of rent_at."""
+    low, high = SURFACE_BOUNDS
+    return f"{ref} * pow(least(greatest({surface}, {low}), {high}) / {ref_surface}, {slope})"
 
 
 def _latest_edition(client: httpx.Client) -> tuple[int, list[dict]]:
@@ -75,111 +101,128 @@ def _as_utf8(path: Path) -> Path:
 
 
 def load_rents(con: duckdb.DuckDBPyConnection, directory: Path, vintage: int) -> None:
-    """Create table rent_commune(code, property_type, rooms_bucket, rent_m2, rent_low_m2,
-    rent_high_m2, rent_source, n_listings, vintage). `code` is the INSEE code of the file:
-    a commune, or an arrondissement for Paris/Lyon/Marseille."""
+    """Create table rent_ref(code, property_type, ref_surface, rent_m2, rent_low_m2, rent_high_m2,
+    rent_level, n_listings, r2, vintage): one row per ANIL file and code. `code` is the INSEE
+    code of the file: a commune, or an arrondissement for Paris/Lyon/Marseille."""
     selects = []
-    for stem, (property_type, buckets) in SEGMENTS.items():
-        bucket_list = ", ".join(f"'{b}'" for b in buckets)
+    for stem, (property_type, surface) in SEGMENTS.items():
         selects.append(
             f"""
-            SELECT INSEE_C AS code, '{property_type}' AS property_type,
-                   unnest([{bucket_list}]) AS rooms_bucket,
+            SELECT INSEE_C AS code, '{property_type}' AS property_type, {surface} AS ref_surface,
                    CAST(replace(loypredm2, ',', '.') AS DOUBLE) AS rent_m2,
                    CAST(replace("lwr.IPm2", ',', '.') AS DOUBLE) AS rent_low_m2,
                    CAST(replace("upr.IPm2", ',', '.') AS DOUBLE) AS rent_high_m2,
-                   -- 'commune': estimated from the commune's own listings;
-                   -- 'maille': borrowed from a group of neighbouring communes
-                   TYPPRED AS rent_source,
+                   -- where ANIL estimated it: the commune's own listings, its EPCI, or a
+                   -- "maille" (group of similar neighbouring communes)
+                   lower(TYPPRED) AS rent_level,
                    CAST(nbobs_com AS INTEGER) AS n_listings,
+                   CAST(replace(R2_adj, ',', '.') AS DOUBLE) AS r2,
                    {vintage} AS vintage
             FROM read_csv('{_as_utf8(directory / f"{stem}.csv").as_posix()}', delim = ';',
                           header = true, all_varchar = true)
             """
         )
-    con.execute(f"CREATE OR REPLACE TABLE rent_commune AS {' UNION ALL '.join(selects)}")
+    con.execute(f"CREATE OR REPLACE TABLE rent_ref AS {' UNION ALL '.join(selects)}")
 
 
-def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
-    """Create table kpi_yield from rent_commune + kpi_price + commune_map.
-
-    Rents are rolled up to every geo level of kpi_price:
-    - arrondissement: as published;
-    - commune: as published, or for Paris/Lyon/Marseille the listing-weighted mean of
-      their arrondissements;
-    - departement / region / france: mean of commune rents weighted by that commune's
-      number of sales in the segment (where the investable stock is).
-    """
+def build_rent_curves(con: duckdb.DuckDBPyConnection) -> None:
+    """Create rent_child (one curve per ANIL code and type, with its rental-home weight) and
+    rent_area (the same curves listed under every geo level that contains them)."""
+    low, high = SLOPE_BOUNDS
     con.execute(
-        """
-        CREATE OR REPLACE TABLE rent_geo AS
-        WITH located AS (
-            SELECT r.*, m.code_commune, m.code_arrondissement, m.departement, m.region
-            FROM rent_commune r JOIN commune_map m ON m.code = r.code
-        ),
-        arrondissements AS (
-            SELECT 'arrondissement' AS geo_level, code_arrondissement AS geo_code, property_type,
-                   rooms_bucket, rent_m2, rent_low_m2, rent_high_m2, rent_source, n_listings, vintage
-            FROM located WHERE code_arrondissement IS NOT NULL
-        ),
-        communes AS (
-            SELECT 'commune' AS geo_level, code_commune AS geo_code, property_type, rooms_bucket,
-                   sum(rent_m2 * greatest(n_listings, 1)) / sum(greatest(n_listings, 1)) AS rent_m2,
-                   sum(rent_low_m2 * greatest(n_listings, 1)) / sum(greatest(n_listings, 1)) AS rent_low_m2,
-                   sum(rent_high_m2 * greatest(n_listings, 1)) / sum(greatest(n_listings, 1)) AS rent_high_m2,
-                   CASE WHEN bool_and(rent_source = 'commune') THEN 'commune' ELSE 'maille' END AS rent_source,
-                   sum(n_listings) AS n_listings, any_value(vintage) AS vintage
-            FROM located GROUP BY ALL
-        ),
-        weights AS (
-            SELECT geo_code AS code_commune, property_type, rooms_bucket, sum(n_sales) AS w
-            FROM kpi_price WHERE geo_level = 'commune' AND period_type = 'year'
-            GROUP BY ALL
-        ),
-        weighted AS (
-            SELECT c.*, m.departement, m.region, coalesce(w.w, 0) AS w
-            FROM communes c
-            JOIN commune_map m ON m.code = c.geo_code
-            LEFT JOIN weights w ON w.code_commune = c.geo_code
-              AND w.property_type = c.property_type AND w.rooms_bucket = c.rooms_bucket
-            WHERE c.geo_code IN (SELECT code FROM commune_map WHERE code = code_commune)
-        ),
-        higher AS (
-            SELECT level AS geo_level, code AS geo_code, property_type, rooms_bucket,
-                   sum(rent_m2 * w) / sum(w) AS rent_m2,
-                   sum(rent_low_m2 * w) / sum(w) AS rent_low_m2,
-                   sum(rent_high_m2 * w) / sum(w) AS rent_high_m2,
-                   'aggregate' AS rent_source, sum(n_listings) AS n_listings,
-                   any_value(vintage) AS vintage
-            FROM (
-                SELECT 'departement' AS level, departement AS code, * FROM weighted
-                UNION ALL SELECT 'region', region, * FROM weighted
-                UNION ALL SELECT 'france', 'FR', * FROM weighted
-            )
-            WHERE w > 0
-            GROUP BY level, code, property_type, rooms_bucket
+        f"""
+        CREATE OR REPLACE TABLE rent_child AS
+        WITH flat_slope AS (
+            SELECT code, greatest(least(regr_slope(ln(rent_m2), ln(ref_surface)), {high}), {low}) AS slope
+            FROM rent_ref WHERE property_type = 'apartment' GROUP BY code
         )
-        SELECT * FROM arrondissements
-        UNION ALL SELECT * FROM communes
-        UNION ALL SELECT * FROM higher
+        SELECT r.code, r.property_type, r.ref_surface, r.rent_m2 AS ref_rent_m2,
+               r.rent_low_m2 / r.rent_m2 AS low_ratio, r.rent_high_m2 / r.rent_m2 AS high_ratio,
+               coalesce(f.slope, 0) AS slope, r.rent_level, r.n_listings,
+               r.n_listings < {CAUTION_LISTINGS} OR r.r2 < {CAUTION_R2} AS caution, r.vintage,
+               m.code_commune, m.code_arrondissement, m.departement, m.region,
+               -- weight: rental main homes, where the rents are paid
+               coalesce(s.rental_homes, 1) AS w
+        FROM rent_ref r
+        JOIN commune_map m ON m.code = r.code
+        LEFT JOIN flat_slope f ON f.code = r.code
+        LEFT JOIN kpi_socio s
+          ON s.geo_level = CASE WHEN m.code_arrondissement IS NOT NULL THEN 'arrondissement' ELSE 'commune' END
+         AND s.geo_code = r.code
+        WHERE (r.property_type = 'apartment' AND r.ref_surface = {REFERENCE_SURFACE["apartment"]})
+           OR (r.property_type = 'house' AND r.ref_surface = {REFERENCE_SURFACE["house"]})
         """
     )
     con.execute(
+        """
+        CREATE OR REPLACE TABLE rent_area AS
+        SELECT 'arrondissement' AS geo_level, code_arrondissement AS geo_code, *
+        FROM rent_child WHERE code_arrondissement IS NOT NULL
+        UNION ALL SELECT 'commune', code_commune, * FROM rent_child
+        UNION ALL SELECT 'departement', departement, * FROM rent_child
+        UNION ALL SELECT 'region', region, * FROM rent_child
+        UNION ALL SELECT 'france', 'FR', * FROM rent_child
+        """
+    )
+
+
+def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
+    """Create table kpi_yield: every existing-home price cell of flats or houses paired with the
+    rent read at that cell's median surface, same area, same type, same size.
+
+    Communes and arrondissements read their own curve (Paris/Lyon/Marseille: their
+    arrondissements); higher levels average the curves of their communes weighted by rental
+    homes, and rent_coverage says which share of the area's rental homes has a rent.
+    Implausible cells are kept with status 'excluded' and a reason instead of vanishing.
+    """
+    build_rent_curves(con)
+    rent = rent_at_sql("a.ref_rent_m2", "a.ref_surface", "a.slope", "p.median_surface_m2")
+    low_s, high_s = SURFACE_BOUNDS
+    con.execute(
         f"""
         CREATE OR REPLACE TABLE kpi_yield AS
-        SELECT p.geo_level, p.geo_code, p.period_type, p.period, p.property_type, p.rooms_bucket,
-               p.n_sales, p.median_price_m2,
-               r.rent_m2, r.rent_low_m2, r.rent_high_m2, r.rent_source, r.n_listings,
-               r.vintage AS rent_vintage,
-               12 * r.rent_m2 / p.median_price_m2 AS gross_yield,
-               p.median_price_m2 / (12 * r.rent_m2) AS price_to_rent_years,
-               p.run_id
-        FROM kpi_price p
-        JOIN rent_geo r USING (geo_level, geo_code, property_type, rooms_bucket)
-        -- a rent edition describes its own year: never pair it with older prices
-        WHERE p.year >= r.vintage
-          AND p.median_price_m2 >= {MIN_PLAUSIBLE_PRICE_M2}
-          AND 12 * r.rent_m2 / p.median_price_m2 <= {MAX_PLAUSIBLE_YIELD}
+        WITH rented AS (
+            SELECT p.geo_level, p.geo_code, p.period_type, p.period, p.property_type, p.rooms_bucket,
+                   any_value(p.n_sales) AS n_sales, any_value(p.median_price_m2) AS median_price_m2,
+                   least(greatest(any_value(p.median_surface_m2), {low_s}), {high_s}) AS rent_surface_m2,
+                   sum(a.w * {rent}) / sum(a.w) AS rent_m2,
+                   sum(a.w * {rent} * a.low_ratio) / sum(a.w) AS rent_low_m2,
+                   sum(a.w * {rent} * a.high_ratio) / sum(a.w) AS rent_high_m2,
+                   CASE WHEN p.geo_level IN ('commune', 'arrondissement')
+                        THEN arg_max(a.rent_level, CASE a.rent_level WHEN 'commune' THEN 0
+                                                                     WHEN 'epci' THEN 1 ELSE 2 END)
+                        ELSE 'aggregate' END AS rent_level,
+                   p.geo_level IN ('commune', 'arrondissement') AND bool_or(a.caution) AS rent_caution,
+                   sum(a.w) AS covered_homes,
+                   sum(a.n_listings) AS n_listings, any_value(a.vintage) AS rent_vintage,
+                   any_value(p.run_id) AS run_id
+            FROM kpi_price p
+            JOIN rent_area a ON a.geo_level = p.geo_level AND a.geo_code = p.geo_code
+                            AND a.property_type = p.property_type
+            -- a rent edition describes its own year: never pair it with older prices
+            WHERE p.condition = 'existing' AND p.property_type IN ('apartment', 'house')
+              AND p.year >= a.vintage
+            GROUP BY p.geo_level, p.geo_code, p.period_type, p.period, p.property_type, p.rooms_bucket
+        ),
+        judged AS (
+            SELECT r.*,
+                   CASE WHEN r.median_price_m2 < {MIN_PLAUSIBLE_PRICE_M2} THEN 'price_below_floor'
+                        WHEN 12 * r.rent_m2 / r.median_price_m2 > {MAX_PLAUSIBLE_YIELD} THEN 'yield_above_ceiling'
+                   END AS reason
+            FROM rented r
+        )
+        SELECT j.geo_level, j.geo_code, j.period_type, j.period, j.property_type, j.rooms_bucket,
+               j.n_sales, j.median_price_m2, j.rent_m2, j.rent_low_m2, j.rent_high_m2, j.rent_surface_m2,
+               CASE j.property_type WHEN 'house' THEN 'house_approx' ELSE 'surface_adjusted' END AS rent_method,
+               j.rent_level, j.rent_caution,
+               least(j.covered_homes / s.rental_homes, 1) AS rent_coverage,
+               j.n_listings, j.rent_vintage,
+               CASE WHEN j.reason IS NULL THEN 12 * j.rent_m2 / j.median_price_m2 END AS gross_yield,
+               CASE WHEN j.reason IS NULL THEN j.median_price_m2 / (12 * j.rent_m2) END AS price_to_rent_years,
+               CASE WHEN j.reason IS NULL THEN 'ok' ELSE 'excluded' END AS status,
+               j.reason, j.run_id
+        FROM judged j
+        LEFT JOIN kpi_socio s ON s.geo_level = j.geo_level AND s.geo_code = j.geo_code
         """
     )
 

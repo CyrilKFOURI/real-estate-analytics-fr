@@ -70,3 +70,8 @@ def test_flags(con):
 
 def test_secret_value_is_null(con):
     assert kpi(con, "commune", "01001", "median_living_standard") is None
+
+
+def test_rental_homes(con):
+    # main homes 50 000 − owner homes 20 000
+    assert kpi(con, "commune", "49007", "rental_homes") == 30000

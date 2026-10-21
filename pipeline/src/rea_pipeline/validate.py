@@ -105,27 +105,32 @@ def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
                AND period = ? AND property_type = 'apartment' AND rooms_bucket = 'all'""",
             [level, code, latest],
         ).fetchone()
-        ok = row is not None and low <= row[0] <= high
+        ok = row is not None and row[0] is not None and low <= row[0] <= high
         detail = "missing" if row is None else f"yield={row[0]:.2%} band=[{low:.1%},{high:.1%}]"
         checks.append((f"yield {code} {latest}", ok, detail))
-    # share of published commune price cells that found a rent
+    # share of published commune price cells (flats and houses, every size) that found a rent
     coverage = con.execute(
         f"""SELECT count(y.geo_code)::DOUBLE / count(*) FROM kpi_price p
             LEFT JOIN kpi_yield y USING (geo_level, geo_code, period, property_type, rooms_bucket)
             WHERE p.geo_level = 'commune' AND p.period = '{latest}' AND p.n_sales >= 10
-              -- ANIL publishes rents by rooms for apartments only
-              AND (p.property_type = 'apartment' OR (p.property_type = 'house' AND p.rooms_bucket = 'all'))"""
+              AND p.condition = 'existing' AND p.property_type IN ('apartment', 'house')"""
     ).fetchone()[0]
     checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
-    # implausible yields are not published (rents.MAX_PLAUSIBLE_YIELD); they must stay a rare exception
-    dropped = con.execute(
-        f"""SELECT count(*) FILTER (WHERE 12 * r.rent_m2 / p.median_price_m2 > {MAX_PLAUSIBLE_YIELD})::DOUBLE
-                  / count(*)
-           FROM kpi_price p JOIN rent_geo r USING (geo_level, geo_code, property_type, rooms_bucket)
-           WHERE p.year >= r.vintage AND p.n_sales >= 10"""
+    # implausible yields are published as excluded; they must stay a rare exception
+    excluded = con.execute(
+        "SELECT avg((status = 'excluded')::INTEGER) FROM kpi_yield WHERE n_sales >= 10"
     ).fetchone()[0]
-    checks.append(("implausible yields dropped", dropped <= MAX_DROPPED_YIELD_SHARE,
-                   f"{dropped:.3%} of cells (limit {MAX_DROPPED_YIELD_SHARE:.1%})"))
+    checks.append(("implausible yields excluded", excluded <= MAX_DROPPED_YIELD_SHARE,
+                   f"{excluded:.3%} of cells (limit {MAX_DROPPED_YIELD_SHARE:.1%})"))
+    # a yield is only ever paired with a price cell of the same key, never on flats + houses
+    orphans = con.execute(
+        """SELECT count(*) FROM kpi_yield y
+           LEFT JOIN kpi_price p ON p.geo_level = y.geo_level AND p.geo_code = y.geo_code
+            AND p.period = y.period AND p.property_type = y.property_type
+            AND p.rooms_bucket = y.rooms_bucket AND p.condition = 'existing'
+           WHERE p.geo_code IS NULL OR y.property_type = 'all'"""
+    ).fetchone()[0]
+    checks.append(("yields paired with their own cell", orphans == 0, f"{orphans} unpaired"))
     return checks
 
 

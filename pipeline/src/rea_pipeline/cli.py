@@ -86,15 +86,16 @@ def build_dvf(skip_ingest: bool) -> int:
             report,
         )
 
+        insee.build_socio_kpis(con, insee.comparateur_file(), run_id)
+        stage("S3 socio", con.execute("SELECT count(*) FROM kpi_socio").fetchone()[0])
+        _gate("V4", validate.check_socio(con), report)
+
+        # rents are weighted by rental homes: after socio
         vintage = rents.edition()
         rents.load_rents(con, rents.RENTS_DIR / str(vintage), vintage)
         rents.build_yield_kpis(con)
         stage("S3 yields", con.execute("SELECT count(*) FROM kpi_yield").fetchone()[0])
         _gate("V3", validate.check_yields(con), report)
-
-        insee.build_socio_kpis(con, insee.comparateur_file(), run_id)
-        stage("S3 socio", con.execute("SELECT count(*) FROM kpi_socio").fetchone()[0])
-        _gate("V4", validate.check_socio(con), report)
 
         tax_year, rei_csv = localtax.rei_file()
         localtax.build_local_tax_kpis(con, rei_csv, tax_year)

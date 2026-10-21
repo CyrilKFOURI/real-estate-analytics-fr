@@ -102,6 +102,7 @@ def build_socio_kpis(con: duckdb.DuckDBPyConnection, comparateur_csv: Path, run_
                vacant / nullif(dwellings, 0) - vacant_prev / nullif(dwellings_prev, 0) AS vacancy_change_pts,
                second_homes / nullif(dwellings, 0) AS second_home_share,
                1 - owner_homes / nullif(main_homes, 0) AS renter_share,
+               main_homes - owner_homes AS rental_homes,
                median_living_standard,
                poverty_rate_pct / 100 AS poverty_rate,
                jobs,
