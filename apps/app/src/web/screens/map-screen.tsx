@@ -168,6 +168,7 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
   const legend = legendItems(legendBreaks, fmt(legendMetric.base), palette, catalogueEntry(legendMetric.base)?.higherIsBetter ?? null);
 
   const onClick = (props: Record<string, unknown>, from: 'polygons' | 'points') => {
+    setHover(null);
     if (from === 'points') {
       const code = String(props._kind === 'section' ? props.commune : props.code);
       setSelected({ level: props._kind === 'section' ? 'commune' : (props.level as GeoLevel), code });
@@ -321,7 +322,7 @@ const Tooltip = ({ hover, type, metricBase }: { hover: { props: Record<string, u
         ]
       : [
           ['Prix médian', formatEurosPerM2(num(p[`price_${type}`]))],
-          ['Évolution / an', formatSignedPercent(num(p[`trend_${type}`]))],
+          ['Évol. moy. / an (5 ans)', formatSignedPercent(num(p[`trend_${type}`]))],
           ['Rentabilité brute', formatPercent(num(p[`yield_${type}`]))],
           ['Cash-flow bien type', num(p[`cash_flow_${type}`]) == null ? '—' : `${Math.round(num(p[`cash_flow_${type}`])!)} €/mois`],
           ['Score', num(p[`score_${type}`]) == null ? '—' : `${Math.round(num(p[`score_${type}`])!)} / 100`],

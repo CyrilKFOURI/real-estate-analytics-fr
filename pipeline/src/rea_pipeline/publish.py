@@ -301,12 +301,17 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
 
     staging = serve_dir.with_name(serve_dir.name + ".next")
     shutil.rmtree(staging, ignore_errors=True)
+    departement_names = dashboard._departement_names()
     index = []
     sizes = []
     for level, code in sorted(prices):
         name, departement, region = names.get(code, (None, None, None))
         if level == "france":
             name = "France"
+        elif level == "departement":
+            name = departement_names.get(code, name)
+        elif level == "region":
+            name = dashboard.REGION_NAMES.get(code, name)
         doc = {
             "schema_version": SCHEMA_VERSION,
             "code": code,

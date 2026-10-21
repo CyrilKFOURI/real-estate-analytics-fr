@@ -110,6 +110,8 @@ export const MapCanvas = ({ polygons, points, dark, bounds, onHover, onClick, on
       addLayers(map, dark);
       (map.getSource('polygons') as GeoJSONSource).setData((data.current.polygons ?? EMPTY) as never);
       (map.getSource('points') as GeoJSONSource).setData((data.current.points ?? EMPTY) as never);
+      map.resize();
+      map.triggerRepaint();
     });
     const hover = (layer: 'polygons' | 'points') => (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
@@ -153,7 +155,14 @@ export const MapCanvas = ({ polygons, points, dark, bounds, onHover, onClick, on
       }
     });
     map.on('zoomend', () => handlers.current.onZoom?.(map.getZoom()));
+    // the DOM screen sizes its container after the map is created: resize and redraw when it does
+    const observer = new ResizeObserver(() => {
+      map.resize();
+      map.triggerRepaint();
+    });
+    observer.observe(container.current);
     return () => {
+      observer.disconnect();
       clearTimeout(fallback);
       map.remove();
       mapRef.current = null;
@@ -165,6 +174,7 @@ export const MapCanvas = ({ polygons, points, dark, bounds, onHover, onClick, on
     const map = mapRef.current;
     (map?.getSource('polygons') as GeoJSONSource | undefined)?.setData((polygons ?? EMPTY) as never);
     (map?.getSource('points') as GeoJSONSource | undefined)?.setData((points ?? EMPTY) as never);
+    map?.triggerRepaint();
   }, [polygons, points]);
 
   useEffect(() => {

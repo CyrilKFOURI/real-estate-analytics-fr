@@ -30,6 +30,7 @@ PRICES = [
     ("commune", "75056", "year", "2025", False, "existing", "apartment", "all", 9, 9600.0, 400000.0, 40.0),
     ("arrondissement", "75101", "year", "2025", False, "existing", "apartment", "all", 300, 13000.0, 500000.0, 38.0),
     ("france", "FR", "year", "2025", False, "existing", "apartment", "all", 800000, 3300.0, 180000.0, 55.0),
+    ("region", "52", "year", "2025", False, "existing", "apartment", "all", 30000, 2700.0, 140000.0, 52.0),
 ]
 
 # (code, type, bucket, rent €/m² charges incl., status)
@@ -197,6 +198,10 @@ def test_index_and_small_places(serve):
     index = json.loads((serve / "index.json").read_text(encoding="utf-8"))
     assert [place[2] for place in index["places"]][:1] == ["Angers"]
     assert json.loads((serve / "geo" / "france" / "FR.json").read_text())["name"] == "France"
+
+
+def test_regions_and_departements_are_named(serve):
+    assert _place(serve, "region", "52")["name"] == "Pays de la Loire"
 
 
 def test_ranking_per_segment(serve):
