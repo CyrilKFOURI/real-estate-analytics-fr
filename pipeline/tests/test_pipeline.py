@@ -234,6 +234,23 @@ def test_new_build_cell(con):
     assert _cells(con, "2025-H1", "all", "new") == {}
 
 
+def test_land_and_outbuilding_context_per_cell(con):
+    for i in range(10):
+        con.execute(
+            """INSERT INTO dvf_sales BY NAME SELECT ? AS id_mutation, DATE '2025-03-01' AS date_mutation,
+                   2025 AS year, 1 AS half, false AS is_new_build, 200000 AS price, 100 AS surface_m2,
+                   2000.0 AS price_m2, 'house' AS property_type, 4 AS rooms, '01001' AS code_commune,
+                   '01' AS code_departement, '84' AS code_region, ? AS land_m2, ? AS n_dependencies""",
+            [f"land-{i}", 500 + 100 * i, 1 if i < 4 else 0],
+        )
+    marts.build_price_kpis(con, "test")
+    land, share = con.execute(
+        """SELECT median_land_m2, share_with_outbuilding FROM kpi_price WHERE geo_level = 'commune'
+           AND geo_code = '01001' AND period = '2025-H1' AND property_type = 'house' AND rooms_bucket = '4'"""
+    ).fetchone()
+    assert land == pytest.approx(950) and share == pytest.approx(0.4)
+
+
 def test_reliability(con):
     _add_sales(con, 2025, 1, 3000, n=12)
     _add_sales(con, 2025, 2, 3000, n=30)

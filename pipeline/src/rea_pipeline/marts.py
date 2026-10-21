@@ -85,15 +85,16 @@ def build_price_kpis(con: duckdb.DuckDBPyConnection, run_id: str) -> None:
         ),
         segmented AS (
             SELECT geo_level, geo_code, period_type, period, year, half, condition, property_type,
-                   rooms_bucket, price_m2, price, surface_m2
+                   rooms_bucket, price_m2, price, surface_m2, land_m2, n_dependencies
             FROM periods WHERE condition = 'existing'
             UNION ALL
             SELECT geo_level, geo_code, period_type, period, year, half, condition, property_type,
-                   'all', price_m2, price, surface_m2 FROM periods
+                   'all', price_m2, price, surface_m2, land_m2, n_dependencies FROM periods
             UNION ALL
             -- flats and houses together: market context only, never compared (study §1)
             SELECT geo_level, geo_code, period_type, period, year, half, condition, 'all',
-                   'all', price_m2, price, surface_m2 FROM periods WHERE condition = 'existing'
+                   'all', price_m2, price, surface_m2, land_m2, n_dependencies FROM periods
+            WHERE condition = 'existing'
         ),
         agg AS (
             SELECT geo_level, geo_code, period_type, period, year,
@@ -104,7 +105,10 @@ def build_price_kpis(con: duckdb.DuckDBPyConnection, run_id: str) -> None:
                    quantile_cont(price_m2, 0.25) AS p25_price_m2,
                    quantile_cont(price_m2, 0.75) AS p75_price_m2,
                    median(price) AS median_price,
-                   median(surface_m2) AS median_surface_m2
+                   median(surface_m2) AS median_surface_m2,
+                   -- what a house price includes: land, and for any cell a cellar / parking
+                   CASE WHEN property_type = 'house' THEN median(land_m2) END AS median_land_m2,
+                   avg((n_dependencies > 0)::INTEGER) AS share_with_outbuilding
             FROM segmented GROUP BY geo_level, geo_code, period_type, period, year,
                                     condition, property_type, rooms_bucket
         ),
@@ -137,6 +141,7 @@ def build_price_kpis(con: duckdb.DuckDBPyConnection, run_id: str) -> None:
                w.condition, w.property_type, w.rooms_bucket, w.n_sales,
                CASE WHEN w.n_sales >= {RELIABLE_SALES} THEN 'ok' ELSE 'low' END AS reliability,
                w.median_price_m2, w.p25_price_m2, w.p75_price_m2, w.median_price, w.median_surface_m2,
+               w.median_land_m2, w.share_with_outbuilding,
                CASE WHEN NOT w.is_partial AND NOT w.prev_partial
                     THEN w.median_price_m2 / w.prev_median - 1 END AS yoy_change,
                -- M5: annualised change since the first complete year (e.g. 2022 → 2025)

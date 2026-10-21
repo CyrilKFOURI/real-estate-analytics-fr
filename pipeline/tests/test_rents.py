@@ -165,6 +165,13 @@ def test_departement_rent_weighted_and_coverage_below_one(con):
     assert d["level"] == "aggregate"
 
 
+def test_zero_rental_homes_never_gives_nan(con):
+    con.execute("UPDATE kpi_socio SET rental_homes = 0 WHERE geo_code = '49007'")
+    rents.build_yield_kpis(con)
+    rent = _yield(con, "commune", "49007")["rent"]
+    assert rent == pytest.approx(15.0)
+
+
 def test_missing_anil_commune_has_no_yield(con):
     assert _yield(con, "commune", "49099") is None
 

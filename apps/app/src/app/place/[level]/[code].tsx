@@ -26,9 +26,8 @@ import {
 import {
   defaultSegment,
   halfYearSeries,
-  latestFullYear,
+  latestCell,
   latestHalf,
-  LOW_CONFIDENCE_SALES,
   type Segment,
   yieldFor,
   newBuildFor,
@@ -95,10 +94,13 @@ export default function PlaceScreen() {
   }
 
   const segment = pickedSegment ?? defaultSegment(place.prices);
-  const year = latestFullYear(place.prices, segment);
+  // the published `latest` block: this size's own year, or all sizes when it only has half-years
+  const cell = latestCell(place.prices, place.latest, segment);
+  const year = cell?.row;
+  const cellSegment = year ? { ...segment, rooms: year.rooms_bucket } : segment;
   const half = latestHalf(place.prices, segment);
   const series = halfYearSeries(place.prices, segment);
-  const rent = year ? yieldFor(place.yields, segment, year.period) : undefined;
+  const rent = year ? yieldFor(place.yields, cellSegment, year.period) : undefined;
   const socio = place.socio;
   const score = segment.propertyType === 'all' ? undefined : place.score?.[segment.propertyType];
   const bands =
@@ -140,6 +142,11 @@ export default function PlaceScreen() {
         {year ? (
           <>
             <ThemedText type="smallBold">Marché en {formatPeriod(year.period)}</ThemedText>
+            {cell?.basis === 'all_sizes' && (
+              <ThemedText type="small" themeColor="warningText">
+                Pas d&apos;année complète pour cette taille : chiffres de toutes tailles confondues.
+              </ThemedText>
+            )}
             <ThemedText type="small" themeColor="textSecondary">
               Les prix sont ceux de ventes déjà signées chez le notaire (DVF), donc le passé : ce que
               des acheteurs ont réellement payé, pas les prix d&apos;annonce actuels, souvent un peu
@@ -150,7 +157,7 @@ export default function PlaceScreen() {
                 label="Prix médian"
                 value={formatEurosPerM2(year.median_price_m2)}
                 detail={`Médiane ${formatEuros(year.median_price)} · ${formatCount(year.n_sales)} ventes`}
-                lowConfidence={year.n_sales < LOW_CONFIDENCE_SALES}
+                lowConfidence={year.reliability === 'low'}
               />
               <KpiTile
                 label="Évolution sur un an"

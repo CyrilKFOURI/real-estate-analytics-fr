@@ -64,7 +64,8 @@ const Row = ({ row, rank }: { row: RankingRow; rank: number }) => {
 
 export default function RankingScreen() {
   const [loaded, setLoaded] = useState<{ segment: string; ranking: Ranking } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // keyed by segment like the rows, so a failed file does not block the other segments
+  const [failure, setFailure] = useState<{ segment: string; message: string } | null>(null);
   const [type, setType] = useState<DwellingType>('apartment');
   const [rooms, setRooms] = useState<RoomsBucket>('all');
   const [filter, setFilter] = useState<RankingFilter>({
@@ -80,7 +81,7 @@ export default function RankingScreen() {
     // one file per segment: flats and houses, and each size, are ranked apart
     loadRanking(type, rooms).then(
       (result) => current && setLoaded({ segment: `${type}_${rooms}`, ranking: result }),
-      (e: Error) => current && setError(e.message),
+      (e: Error) => current && setFailure({ segment: `${type}_${rooms}`, message: e.message }),
     );
     return () => {
       current = false;
@@ -89,6 +90,7 @@ export default function RankingScreen() {
 
   // the previous segment's rows are not shown while the next file loads
   const ranking = loaded?.segment === `${type}_${rooms}` ? loaded.ranking : null;
+  const error = failure?.segment === `${type}_${rooms}` ? failure.message : null;
   const rows = useMemo(
     () => (ranking ? rankPlaces(ranking.rows, { ...filter, maxPriceM2: budget ? parseNumber(budget) : null }) : []),
     [ranking, filter, budget],

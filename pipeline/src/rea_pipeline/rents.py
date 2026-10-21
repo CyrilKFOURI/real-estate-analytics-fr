@@ -21,6 +21,7 @@ import httpx
 
 from . import paths
 from .ingest import download
+from .marts import RELIABLE_SALES
 
 DATASET_SEARCH_API = "https://www.data.gouv.fr/api/1/datasets/?q=carte%20des%20loyers&page_size=20"
 SLUG = re.compile(r"^carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-(\d{4})$")
@@ -141,8 +142,9 @@ def build_rent_curves(con: duckdb.DuckDBPyConnection) -> None:
                coalesce(f.slope, 0) AS slope, r.rent_level, r.n_listings,
                r.n_listings < {CAUTION_LISTINGS} OR r.r2 < {CAUTION_R2} AS caution, r.vintage,
                m.code_commune, m.code_arrondissement, m.departement, m.region,
-               -- weight: rental main homes, where the rents are paid
-               coalesce(s.rental_homes, 1) AS w
+               -- weight: rental main homes, where the rents are paid (a commune with none still
+               -- counts a little: a zero weight would make a lone commune's rent 0/0 = NaN)
+               CASE WHEN coalesce(s.rental_homes, 0) > 0 THEN s.rental_homes ELSE 1 END AS w
         FROM rent_ref r
         JOIN commune_map m ON m.code = r.code
         LEFT JOIN flat_slope f ON f.code = r.code
@@ -212,7 +214,8 @@ def build_yield_kpis(con: duckdb.DuckDBPyConnection) -> None:
             FROM rented r
         )
         SELECT j.geo_level, j.geo_code, j.period_type, j.period, j.property_type, j.rooms_bucket,
-               j.n_sales, j.median_price_m2, j.rent_m2, j.rent_low_m2, j.rent_high_m2, j.rent_surface_m2,
+               j.n_sales, CASE WHEN j.n_sales >= {RELIABLE_SALES} THEN 'ok' ELSE 'low' END AS reliability,
+               j.median_price_m2, j.rent_m2, j.rent_low_m2, j.rent_high_m2, j.rent_surface_m2,
                CASE j.property_type WHEN 'house' THEN 'house_approx' ELSE 'surface_adjusted' END AS rent_method,
                j.rent_level, j.rent_caution,
                least(j.covered_homes / s.rental_homes, 1) AS rent_coverage,

@@ -140,6 +140,9 @@ def test_schema_and_fields(serve):
     assert angers["schema_version"] == 2
     assert {"condition", "reliability", "new_premium"} <= set(angers["price_fields"])
     assert {"status", "reason", "rent_method", "rent_level", "rent_surface_m2"} <= set(angers["yield_fields"])
+    # every published value says how many sales it rests on and how reliable it is
+    assert {"n_sales", "reliability"} <= set(angers["yield_fields"])
+    assert {"median_land_m2", "share_with_outbuilding"} <= set(angers["price_fields"])
 
 
 def test_latest_points_at_last_complete_year(serve):

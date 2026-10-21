@@ -31,8 +31,9 @@ TYPES = ("apartment", "house")
 SIZES = {"apartment": ("all", "1", "2", "3", "4", "5+"), "house": ("all", "1-3", "4", "5", "6+")}
 PRICE_FIELDS = ("period_type", "period", "is_partial", "condition", "property_type", "rooms_bucket", "n_sales",
                 "reliability", "median_price_m2", "p25_price_m2", "p75_price_m2", "median_price", "yoy_change",
-                "median_surface_m2", "cagr", "cagr_since", "new_premium")
-YIELD_FIELDS = ("period", "property_type", "rooms_bucket", "rent_m2", "rent_low_m2", "rent_high_m2",
+                "median_surface_m2", "median_land_m2", "share_with_outbuilding", "cagr", "cagr_since",
+                "new_premium")
+YIELD_FIELDS = ("period", "property_type", "rooms_bucket", "n_sales", "reliability", "rent_m2", "rent_low_m2", "rent_high_m2",
                 "rent_surface_m2", "rent_method", "rent_level", "rent_caution", "rent_coverage", "n_listings",
                 "gross_yield", "price_to_rent_years", "status", "reason")
 SOCIO_FIELDS = ("census_year", "population", "population_growth_yearly", "dwellings",
@@ -322,7 +323,7 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
         }
         target = staging / "geo" / level / f"{code}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
-        text = json.dumps(doc, ensure_ascii=False, separators=(",", ":"), default=float)  # DuckDB DECIMAL
+        text = json.dumps(allow_nan=False, obj=doc, ensure_ascii=False, separators=(",", ":"), default=float)  # DuckDB DECIMAL
         target.write_text(text, encoding="utf-8")
         sizes.append(len(text.encode("utf-8")))
         if level in SEARCHABLE_LEVELS and name:
@@ -331,18 +332,18 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
 
     index.sort(key=lambda item: -(item[4] or 0))  # biggest places first in search results
     (staging / "index.json").write_text(
-        json.dumps({"schema_version": SCHEMA_VERSION, "run_id": run_id,
+        json.dumps(allow_nan=False, obj={"schema_version": SCHEMA_VERSION, "run_id": run_id,
                     "fields": ["code", "level", "name", "departement", "population"], "places": index},
                    ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
-    (staging / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    (staging / "meta.json").write_text(json.dumps(allow_nan=False, obj=meta, ensure_ascii=False), encoding="utf-8")
     for agglo, block in oll_series.items():
         if not oll.is_agglomeration_code(agglo):
             raise ValueError(f"unexpected OLL agglomeration code {agglo!r}")  # it becomes a file name
         target = staging / "oll" / f"{agglo}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(block, ensure_ascii=False, separators=(",", ":"), default=float),
+        target.write_text(json.dumps(allow_nan=False, obj=block, ensure_ascii=False, separators=(",", ":"), default=float),
                           encoding="utf-8")
     ranking = _write_ranking(con, staging, run_id)
     have_contours = all((mapdata.CONTOURS_DIR / f"{n}.geojson.gz").exists() for n in mapdata.LAYERS.values())
@@ -413,13 +414,13 @@ def _write_ranking(con: duckdb.DuckDBPyConnection, staging: Path, run_id: str) -
     directory.mkdir(parents=True, exist_ok=True)
     for slug, segment_rows in files.items():
         (directory / f"{slug}.json").write_text(
-            json.dumps({"run_id": run_id, "period": period, "min_sales": RELIABLE_SALES,
+            json.dumps(allow_nan=False, obj={"run_id": run_id, "period": period, "min_sales": RELIABLE_SALES,
                         "fields": RANKING_FIELDS, "rows": segment_rows},
                        ensure_ascii=False, separators=(",", ":"), default=float),
             encoding="utf-8",
         )
     (staging / "ranking.json").write_text(
-        json.dumps({"schema_version": SCHEMA_VERSION, "run_id": run_id, "period": period,
+        json.dumps(allow_nan=False, obj={"schema_version": SCHEMA_VERSION, "run_id": run_id, "period": period,
                     "min_sales": RELIABLE_SALES, "segments": sorted(files)}, ensure_ascii=False),
         encoding="utf-8",
     )

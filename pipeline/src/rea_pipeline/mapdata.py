@@ -118,7 +118,7 @@ def _clean(values: dict) -> dict:
 
 def _write(path: Path, features: list[dict]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":"))
+    text = json.dumps(allow_nan=False, obj={"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":"))
     path.write_text(text, encoding="utf-8")
     return len(text.encode("utf-8"))
 
@@ -157,7 +157,7 @@ def write_map_layer(con: duckdb.DuckDBPyConnection, serve_dir: Path, min_sales: 
     ]
     breaks = {"departements": _breaks(departements),
               "communes": _breaks([f for features in by_departement.values() for f in features])}
-    (serve_dir / "map" / "breaks.json").write_text(json.dumps(breaks, separators=(",", ":")), encoding="utf-8")
+    (serve_dir / "map" / "breaks.json").write_text(json.dumps(allow_nan=False, obj=breaks, separators=(",", ":")), encoding="utf-8")
     sizes |= {"commune_files": len(commune_bytes), "commune_max_kb": round(max(commune_bytes) / 1024),
               "departements_kb": round(sizes["departements"] / 1024)}
     return sizes

@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import {
   type Breaks,
+  hasPlacePage,
   loadBreaks,
   loadMapLayer,
   type MapFeature,
@@ -77,12 +78,12 @@ const Details = ({ feature, view, type }: { feature: MapFeature; view: View_; ty
           <ThemedText type="small">{m.format(p[metricKey(m.base, type)] as number)}</ThemedText>
         </View>
       ))}
-      {isPlace && typeof sales !== 'number' && (
+      {isPlace && !hasPlacePage(p) && (
         <ThemedText type="small" themeColor="textSecondary">
           Moins de 10 ventes sur l&apos;année : pas de chiffres de prix publiés pour cette commune.
         </ThemedText>
       )}
-      {isPlace && typeof sales === 'number' && (
+      {isPlace && hasPlacePage(p) && (
         <Link href={`/place/${p.level ?? 'commune'}/${p.code}`}>
           <ThemedText type="smallBold" themeColor="accent">
             Voir la page de {p.nom} →
