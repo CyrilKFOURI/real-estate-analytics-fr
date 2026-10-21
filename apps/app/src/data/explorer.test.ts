@@ -52,3 +52,14 @@ test('histogram counts values in equal bins and ignores missing ones', () => {
   assert.deepEqual(histogram([], 3), { edges: [], counts: [] });
   assert.deepEqual(histogram([5, 5], 3).counts, [2]);
 });
+
+test('bounds are typed as shown: percent metrics in %, garbage ignored', async () => {
+  const { parseBound } = await import('./explorer.ts');
+  assert.equal(parseBound('6', 'yield'), 0.06);
+  assert.equal(parseBound('5,5', 'vacancy'), 0.055);
+  assert.equal(parseBound('3000', 'price'), 3000);
+  assert.equal(parseBound('-200', 'cash_flow'), -200);
+  assert.equal(parseBound('', 'price'), null);
+  assert.equal(parseBound('-', 'price'), null);
+  assert.equal(parseBound('abc', 'yield'), null);
+});

@@ -80,7 +80,14 @@ const prefersDark = () =>
 export default function PlaceScreen({ filters, onFilters, navigate }: ScreenProps) {
   const level = filters.level;
   const code = filters.code;
-  const { place, error, loading, retry } = usePlace(level, code);
+  const { place, error, notFound, loading, retry } = usePlace(level, code);
+  if (notFound) {
+    return (
+      <Shell active="map" title="Marché" navigate={navigate} crumbs={[{ label: 'France', href: '/' }]}>
+        <EmptyState>Pas de ventes publiées pour ce lieu : moins de 10 ventes par an, ou territoire hors DVF (Alsace-Moselle, Mayotte).</EmptyState>
+      </Shell>
+    );
+  }
   if (error) {
     return (
       <Shell active="map" title="Marché" navigate={navigate} crumbs={[{ label: 'France', href: '/' }]}>
@@ -163,7 +170,9 @@ const PlaceDashboard = ({
       deal: place.typical_deal?.[type]?.[bucket],
     };
   });
-  const newRow = year ? newBuildFor(place.prices, { propertyType: type, rooms: 'all' }, year.period) : undefined;
+  // new builds are published for all sizes only: compare them with the all-sizes existing row
+  const allSizes = latestCell(place.prices, place.latest, { propertyType: type, rooms: 'all' })?.row;
+  const newRow = allSizes ? newBuildFor(place.prices, { propertyType: type, rooms: 'all' }, allSizes.period) : undefined;
   const bands = bandsSeries(place.price_bands, type);
 
   // ---- territoire
@@ -395,19 +404,19 @@ const PlaceDashboard = ({
           )}
           <div className="cy-note">Bande : moitié centrale des ventes (P25 – P75).</div>
         </Panel>
-        <Panel span={4} title="Ancien et neuf" info="new_premium">
+        <Panel span={4} title={`Ancien et neuf · ${typeLabel} toutes tailles`} info="new_premium">
           <Kv
             rows={[
-              ['Ancien · médiane', formatEurosPerM2(year?.median_price_m2)],
+              ['Ancien · médiane', formatEurosPerM2(allSizes?.median_price_m2)],
               ['Neuf (VEFA) · médiane', formatEurosPerM2(newRow?.median_price_m2)],
               ['Ventes dans le neuf', newRow ? formatCount(newRow.n_sales) : 'moins de 10'],
-              ['Surcoût du neuf', formatSignedPercent(year?.new_premium), 'new_premium'],
-              ['Prix médian d’un bien', formatEuros(year?.median_price)],
-              ['Surface médiane', year?.median_surface_m2 ? `${Math.round(year.median_surface_m2)} m²` : '—'],
+              ['Surcoût du neuf', formatSignedPercent(allSizes?.new_premium), 'new_premium'],
+              ['Prix médian d’un bien', formatEuros(allSizes?.median_price)],
+              ['Surface médiane', allSizes?.median_surface_m2 ? `${Math.round(allSizes.median_surface_m2)} m²` : '—'],
               ...(type === 'house'
                 ? ([
-                    ['Terrain médian', year?.median_land_m2 ? `${formatCount(Math.round(year.median_land_m2))} m²` : '—'],
-                    ['Avec dépendance', formatPercent(year?.share_with_outbuilding)],
+                    ['Terrain médian', allSizes?.median_land_m2 ? `${formatCount(Math.round(allSizes.median_land_m2))} m²` : '—'],
+                    ['Avec dépendance', formatPercent(allSizes?.share_with_outbuilding)],
                   ] as [string, string][])
                 : []),
             ]}

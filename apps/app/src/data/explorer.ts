@@ -130,3 +130,15 @@ export const EXPLORER_METRIC: Record<string, keyof ExplorerRow> = {
   population_growth: 'population_growth_yearly',
   tfpb_rate: 'tfpb_rate',
 };
+
+/** Indicators stored as fractions but read in % on screen. */
+export const PERCENT_METRICS = new Set(['yield', 'net_yield', 'trend', 'share_fg', 'vacancy', 'population_growth', 'tfpb_rate']);
+
+/** A min / max typed by the user, in the unit shown on screen; null when empty or not a number. */
+export const parseBound = (text: string, metricBase: string): number | null => {
+  const value = Number.parseFloat(text.replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return PERCENT_METRICS.has(metricBase) ? value / 100 : value;
+};

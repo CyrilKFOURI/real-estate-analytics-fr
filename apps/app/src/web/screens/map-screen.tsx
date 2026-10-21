@@ -159,19 +159,23 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
   };
   const pointCollection = buildPoints();
 
-  const legendBreaks = mode === 'points' && dep && zoom >= SECTION_ZOOM
+  // section points are always coloured by price: legend and title follow them
+  const showSections = mode === 'points' && Boolean(dep) && zoom >= SECTION_ZOOM;
+  const legendBreaks = showSections
     ? pointBreaks?.[`price_${type}`] ?? []
     : mode === 'points'
       ? breaks?.communes[metricKey(pointMetric.base, type)] ?? []
       : layerBreaks;
-  const legendMetric = mode === 'points' ? pointMetric : metric;
+  const legendMetric = showSections ? METRICS[0] : mode === 'points' ? pointMetric : metric;
   const legend = legendItems(legendBreaks, fmt(legendMetric.base), palette, catalogueEntry(legendMetric.base)?.higherIsBetter ?? null);
 
   const onClick = (props: Record<string, unknown>, from: 'polygons' | 'points') => {
     setHover(null);
     if (from === 'points') {
       const code = String(props._kind === 'section' ? props.commune : props.code);
-      setSelected({ level: props._kind === 'section' ? 'commune' : (props.level as GeoLevel), code });
+      // a section's commune is an arrondissement code in Paris, Lyon and Marseille
+      const sectionLevel: GeoLevel = /^(751|6938|132[01])/.test(code) ? 'arrondissement' : 'commune';
+      setSelected({ level: props._kind === 'section' ? sectionLevel : (props.level as GeoLevel), code });
       return;
     }
     if (!dep) {
@@ -231,7 +235,7 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
         <Panel
           span={9}
           flush
-          title={`${legendMetric.label} · ${type === 'house' ? 'maisons' : 'appartements'}${mode === 'points' && dep && zoom >= SECTION_ZOOM ? ' · sections cadastrales' : ''}`}
+          title={`${legendMetric.label} · ${type === 'house' ? 'maisons' : 'appartements'}${showSections ? ' · sections cadastrales' : ''}`}
           info={legendMetric.base}
           style={{ minHeight: 520 }}
           tools={
@@ -309,7 +313,7 @@ const Tooltip = ({ hover, type, metricBase }: { hover: { props: Record<string, u
   const num = (v: unknown) => (typeof v === 'number' ? v : null);
   const section = p._kind === 'section';
   const commune = p._kind === 'commune';
-  const name = section ? `Section ${String(p.section).slice(5)} (commune ${p.commune})` : String(p.nom ?? p.name ?? p.code);
+  const name = section ? `Section ${String(p.section).slice(8)} · ${p.commune}` : String(p.nom ?? p.name ?? p.code);
   const rows: [string, string][] = section
     ? [['Prix médian', formatEurosPerM2(num(p.median_price_m2))], ['Ventes (2 ans)', formatCount(num(p.n))]]
     : commune

@@ -13,15 +13,6 @@ const LEVEL_SHORT: Record<GeoLevel, string> = {
   arrondissement: 'arr.',
 };
 
-let indexPromise: Promise<IndexPlace[]> | null = null;
-const index = () => {
-  indexPromise ??= loadIndex().catch((e: Error) => {
-    indexPromise = null;
-    throw e;
-  });
-  return indexPromise;
-};
-
 export const PlaceSearch = ({
   onPick,
   placeholder = 'Rechercher une commune, un département…',
@@ -35,7 +26,7 @@ export const PlaceSearch = ({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   useEffect(() => {
-    index().then(setPlaces, (e: Error) => setError(e.message));
+    loadIndex().then(setPlaces, (e: Error) => setError(e.message));
   }, []);
   const results = places
     ? searchPlaces(places, query).filter((p) => !exclude.includes(`${p.level}:${p.code}`)).slice(0, 8)

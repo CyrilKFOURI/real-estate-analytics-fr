@@ -45,3 +45,13 @@ test('places come from the URL as level:code, at most six, invalid ones dropped'
   assert.equal(parsePlaces(Array.from({ length: 9 }, (_, i) => `commune:4900${i}`).join(',')).length, 6);
   assert.deepEqual(parsePlaces(undefined), []);
 });
+
+test('in years, partial edge years are left out (they compare by half-year only)', () => {
+  const rows = [
+    price({ period_type: 'year', period: '2021', is_partial: true }),
+    price({ period_type: 'year', period: '2022' }),
+    price({ period_type: 'year', period: '2026', is_partial: true }),
+  ];
+  const s = seriesFor(rows, { type: 'apartment', size: 'all', condition: 'existing', periodType: 'year' });
+  assert.deepEqual(s.map((p) => p.period), ['2022']);
+});

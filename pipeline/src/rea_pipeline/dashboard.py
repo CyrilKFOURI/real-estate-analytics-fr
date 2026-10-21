@@ -40,6 +40,7 @@ SERIES_FIELDS = ("code", "condition", "size", "period_type", "period", "n", "med
 SERIES_LEVELS = ("france", "region", "departement")
 COMMUNE_POINT_FIELDS = ("code", "level", "name", "dep", "lon", "lat", "type", "n", "median_price_m2",
                         "yoy_change", "gross_yield", "cash_flow_monthly")
+CITIES_WITH_ARRONDISSEMENTS = {"75056", "13055", "69123"}
 SECTION_FIELDS = ("section", "commune", "lon", "lat", "type", "n", "median_price_m2")
 
 
@@ -197,6 +198,9 @@ def _section_points(con: duckdb.DuckDBPyConnection, min_sales: int) -> tuple[str
     ).fetchall()
     by_dep: dict[str, list] = {}
     for dep, section, commune, lon, lat, ptype, n, m2 in rows:
+        # Paris, Lyon, Marseille: DVF files the city, the section id starts with the arrondissement
+        if commune in CITIES_WITH_ARRONDISSEMENTS:
+            commune = section[:5]
         by_dep.setdefault(dep, []).append([section, commune, _round(lon), _round(lat), ptype, n, _round(m2)])
     return f"{last - 1}-{last}", by_dep
 

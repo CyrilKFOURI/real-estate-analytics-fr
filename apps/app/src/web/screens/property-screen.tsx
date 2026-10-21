@@ -5,7 +5,7 @@
 // comparable sales and the commune's section prices on a map), market cell, ANIL rent at the property's own
 // surface and OLL, money (short simulation) and risks. The estimate comes from the local API; when it is
 // down, every panel that only needs the published files still renders from the chosen commune.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { assessRisk, cashFlowVerdict, type EnergyClass, type PriceVerdict, RENTAL_BAN_YEAR, summary } from '../../core-kpi/assessment';
 import { analyzeDeal } from '../../core-kpi/deal';
@@ -92,6 +92,7 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
   const [estimate, setEstimate] = useState<{ value?: Estimate; error?: string; loading: boolean }>({ loading: false });
   const [place, setPlace] = useState<{ key: string; value: Place | null } | null>(null);
   const [oll, setOll] = useState<Oll | null>(null);
+  const lastRequest = useRef(0);
   const [sections, setSections] = useState<SectionPoint[] | null>(null);
   const [dark] = useState(prefersDark);
   const set = <K extends keyof Form>(key: K) => (value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -130,6 +131,8 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
 
   const analyze = () => {
     const snapshot = form;
+    // a late answer to an earlier click must not overwrite the latest one
+    const request = ++lastRequest.current;
     setSubmitted(snapshot);
     setEstimate({ loading: true });
     requestEstimate({
@@ -142,8 +145,8 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
       is_new_build: snapshot.isNew,
       asked_price: num(snapshot.price),
     }).then(
-      (value) => setEstimate({ value, loading: false }),
-      (e: Error) => setEstimate({ error: e.message, loading: false }),
+      (value) => request === lastRequest.current && setEstimate({ value, loading: false }),
+      (e: Error) => request === lastRequest.current && setEstimate({ error: e.message, loading: false }),
     );
   };
 
@@ -178,7 +181,7 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
             onChange={(v) => set('energy')((v || null) as EnergyClass | null)} />
         </FilterField>
         <FilterField label=" ">
-          <button type="button" className="cy-button" onClick={analyze} disabled={!form.address && !form.commune}>
+          <button type="button" className="cy-button" onClick={analyze} disabled={(!form.address && !form.commune) || !(num(form.surface) > 0) || !(num(form.price) > 0)}>
             {estimate.loading ? 'Analyse…' : 'Analyser'}
           </button>
         </FilterField>
@@ -199,7 +202,7 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
             </div>
           </Panel>
         ) : (
-          <Analysis form={submitted} estimate={estimate} market={market} oll={oll} sections={sections} dark={dark} navigate={navigate} />
+          <Analysis form={submitted} estimate={estimate} market={market} oll={oll && market?.oll?.agglo_code === oll.agglo_code ? oll : null} sections={sections} dark={dark} navigate={navigate} />
         )}
       </div>
     </Shell>

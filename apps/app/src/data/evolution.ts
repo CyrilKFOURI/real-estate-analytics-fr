@@ -20,7 +20,9 @@ export const seriesFor = (prices: PriceRow[], segment: CurveSegment): CurvePoint
         row.property_type === segment.type &&
         row.rooms_bucket === segment.size &&
         row.condition === segment.condition &&
-        row.period_type === segment.periodType,
+        row.period_type === segment.periodType &&
+        // a partial year (edge of the DVF window) only compares by half-year
+        !(segment.periodType === 'year' && row.is_partial),
     )
     .sort((a, b) => a.period.localeCompare(b.period))
     .map((row) => ({

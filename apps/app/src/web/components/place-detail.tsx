@@ -47,7 +47,15 @@ export const usePlace = (level: GeoLevel | null, code: string | null) => {
     };
   }, [level, code, key]);
   const settled = state?.key === key ? state : null;
-  return { place: settled?.place, error: settled?.error, loading: Boolean(key) && !settled, retry: () => setAttempt((a) => a + 1) };
+  // no file = no published sales here (too few, or outside DVF): an empty state, not an error
+  const notFound = Boolean(settled?.error?.includes('HTTP 404'));
+  return {
+    place: settled?.place,
+    error: notFound ? undefined : settled?.error,
+    notFound,
+    loading: Boolean(key) && !settled,
+    retry: () => setAttempt((a) => a + 1),
+  };
 };
 
 type PlaceDetailProps = {
@@ -58,7 +66,10 @@ type PlaceDetailProps = {
 };
 
 export const PlaceDetail = ({ level, code, type, navigate }: PlaceDetailProps) => {
-  const { place, error, loading, retry } = usePlace(level, code);
+  const { place, error, notFound, loading, retry } = usePlace(level, code);
+  if (notFound) {
+    return <EmptyState>Pas de ventes publiées ici : moins de 10 ventes par an, ou territoire hors DVF (Alsace-Moselle, Mayotte).</EmptyState>;
+  }
   if (error) {
     return <ErrorPanel message={`Fiche indisponible : ${error}`} onRetry={retry} />;
   }

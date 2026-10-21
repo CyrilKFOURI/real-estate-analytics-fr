@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 
 import { loadTable } from '../../data/api';
 import { catalogueEntry } from '../../data/catalogue';
-import { EXPLORER_METRIC, type ExplorerRow, filterRows, histogram, type Ranges, sortRows, toCsv } from '../../data/explorer';
+import { EXPLORER_METRIC, type ExplorerRow, filterRows, histogram, parseBound, PERCENT_METRICS, type Ranges, sortRows, toCsv } from '../../data/explorer';
 import {
   formatCount,
   formatEuros,
@@ -90,8 +90,8 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<ExplorerRow | null>(null);
   const [limit, setLimit] = useState(PAGE);
-  const [min, setMin] = useState('');
-  const [max, setMax] = useState('');
+  // bounds belong to one indicator: switching indicator starts with none
+  const [bounds, setBounds] = useState({ metric: '', min: '', max: '' });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -114,7 +114,11 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
 
   const ready = data?.scope === scope ? data : null;
   const failed = error?.scope === scope ? error.message : null;
-  const ranges: Ranges = min || max ? { [metricField]: [min ? Number(min) : null, max ? Number(max) : null] } : {};
+  const min = bounds.metric === metric.base ? bounds.min : '';
+  const max = bounds.metric === metric.base ? bounds.max : '';
+  const low = parseBound(min, metric.base);
+  const high = parseBound(max, metric.base);
+  const ranges: Ranges = low != null || high != null ? { [metricField]: [low, high] } : {};
   const visible = ready
     ? sortRows(filterRows(ready.rows, { type, size: filters.size, reliable: filters.reliable }, ranges, query), sort.key as keyof ExplorerRow, sort.dir)
     : [];
@@ -205,11 +209,11 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input className="cy-input" type="search" placeholder="Filtrer par nom" aria-label="Filtrer par nom" value={query}
                   onChange={(e) => setQuery(e.target.value)} style={{ width: 150 }} />
-                <span className="ink-3" style={{ fontSize: 'var(--fs-small)' }}>{metric.label}</span>
+                <span className="ink-3" style={{ fontSize: 'var(--fs-small)' }}>{metric.label}{PERCENT_METRICS.has(metric.base) ? ' (%)' : ''}</span>
                 <input className="cy-input num" inputMode="decimal" placeholder="min" aria-label={`${metric.label} minimum`} value={min}
-                  onChange={(e) => setMin(e.target.value.replace(',', '.'))} style={{ width: 70 }} />
+                  onChange={(e) => setBounds({ metric: metric.base, min: e.target.value, max })} style={{ width: 70 }} />
                 <input className="cy-input num" inputMode="decimal" placeholder="max" aria-label={`${metric.label} maximum`} value={max}
-                  onChange={(e) => setMax(e.target.value.replace(',', '.'))} style={{ width: 70 }} />
+                  onChange={(e) => setBounds({ metric: metric.base, min, max: e.target.value })} style={{ width: 70 }} />
               </div>
             }>
             <DataTable
@@ -221,7 +225,13 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
               selected={selected ? `${selected.level}:${selected.code}` : null}
               onRowClick={setSelected}
               maxHeight={560}
-              empty={<EmptyState>Aucun lieu ne passe ces filtres. Élargissez la taille, décochez « fiables » ou videz min / max.</EmptyState>}
+              empty={
+                <EmptyState>
+                  {ready.rows.length === 0
+                    ? 'Pas de ventes publiées pour ce territoire (hors DVF ou trop peu de ventes).'
+                    : 'Aucun lieu ne passe ces filtres. Élargissez la taille, décochez « fiables » ou videz min / max.'}
+                </EmptyState>
+              }
             />
             {visible.length > limit && (
               <div style={{ padding: 8, borderTop: '1px solid var(--line)' }}>

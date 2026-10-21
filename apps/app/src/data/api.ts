@@ -1,4 +1,5 @@
-import { checkSchema } from './select';
+import { cached } from './cache.ts';
+import { checkSchema } from './select.ts';
 import type {
   DwellingType,
   GeoLevel,
@@ -12,7 +13,7 @@ import type {
   RankingRow,
   RoomsBucket,
   YieldRow,
-} from './types';
+} from './types.ts';
 
 // On web the KPI files are served from public/data. A native build will point this at the CDN.
 const DATA_URL = process.env.EXPO_PUBLIC_DATA_URL ?? '/data';
@@ -31,20 +32,17 @@ const toObjects = <T>(fields: string[], rows: unknown[][]): T[] =>
 
 const fetchJson = async <T>(path: string): Promise<T> => {
   const response = await fetch(`${DATA_URL}/${path}`);
-  if (!response.ok) {
-    throw new Error(`${path}: HTTP ${response.status}`);
+  // a dev server or static host answers a missing file with the app page (HTML, status 200)
+  const missing = response.ok && (response.headers.get('content-type') ?? '').includes('text/html');
+  if (!response.ok || missing) {
+    throw new Error(`${path}: HTTP ${missing ? 404 : response.status}`);
   }
   return response.json() as Promise<T>;
 };
 
-let indexPromise: Promise<IndexPlace[]> | null = null;
+const indexCache = cached((path) => fetchJson<RawIndex>(path).then((raw) => toObjects<IndexPlace>(raw.fields, raw.places)));
 
-export const loadIndex = (): Promise<IndexPlace[]> => {
-  indexPromise ??= fetchJson<RawIndex>('index.json').then((raw) =>
-    toObjects<IndexPlace>(raw.fields, raw.places),
-  );
-  return indexPromise;
-};
+export const loadIndex = (): Promise<IndexPlace[]> => indexCache('index.json');
 
 export const loadPlace = async (level: GeoLevel, code: string): Promise<Place> => {
   const raw = await fetchJson<RawPlace>(`geo/${level}/${code}.json`);
@@ -60,31 +58,22 @@ export const loadPlace = async (level: GeoLevel, code: string): Promise<Place> =
 
 type RawRanking = { period: string; min_sales: number; fields: string[]; rows: unknown[][] };
 
-const rankingCache = new Map<string, Promise<Ranking>>();
+const rankingCache = cached((slug) =>
+  fetchJson<RawRanking>(`ranking/${slug}.json`).then((raw) => ({
+    period: raw.period,
+    minSales: raw.min_sales,
+    rows: toObjects<RankingRow>(raw.fields, raw.rows),
+  })),
+);
 
 /** One segment of the ranking (ranking/<type>_<size>.json, '5+' written '5p'). */
-export const loadRanking = (type: DwellingType, rooms: RoomsBucket): Promise<Ranking> => {
-  const slug = `${type}_${rooms.replace('+', 'p')}`;
-  if (!rankingCache.has(slug)) {
-    rankingCache.set(
-      slug,
-      fetchJson<RawRanking>(`ranking/${slug}.json`).then((raw) => ({
-        period: raw.period,
-        minSales: raw.min_sales,
-        rows: toObjects<RankingRow>(raw.fields, raw.rows),
-      })),
-    );
-  }
-  return rankingCache.get(slug)!;
-};
+export const loadRanking = (type: DwellingType, rooms: RoomsBucket): Promise<Ranking> =>
+  rankingCache(`${type}_${rooms.replace('+', 'p')}`);
 
-let metaPromise: Promise<Meta> | null = null;
+const metaCache = cached((path) => fetchJson<Meta>(path));
 
 /** Source of each block (meta.json), loaded once. */
-export const loadMeta = (): Promise<Meta> => {
-  metaPromise ??= fetchJson<Meta>('meta.json');
-  return metaPromise;
-};
+export const loadMeta = (): Promise<Meta> => metaCache('meta.json');
 
 /** OLL rents in place of one agglomeration. */
 export const loadOll = async (aggloCode: string): Promise<Oll> => {
@@ -95,18 +84,13 @@ export const loadOll = async (aggloCode: string): Promise<Oll> => {
 // ---- dashboard files (pipeline/src/rea_pipeline/dashboard.py) --------------------------------------
 type RawTable = { period?: string | null; fields: string[]; rows: unknown[][] };
 
-const tableCache = new Map<string, Promise<{ period: string | null; rows: Record<string, unknown>[] }>>();
+const tableCache = cached((path) =>
+  fetchJson<RawTable>(path).then((raw) => ({ period: raw.period ?? null, rows: toObjects<Record<string, unknown>>(raw.fields, raw.rows) })),
+);
 
-/** A compact {fields, rows} file as objects, cached per path. */
-export const loadTable = <T extends Record<string, unknown>>(path: string): Promise<{ period: string | null; rows: T[] }> => {
-  if (!tableCache.has(path)) {
-    tableCache.set(
-      path,
-      fetchJson<RawTable>(path).then((raw) => ({ period: raw.period ?? null, rows: toObjects(raw.fields, raw.rows) })),
-    );
-  }
-  return tableCache.get(path) as Promise<{ period: string | null; rows: T[] }>;
-};
+/** A compact {fields, rows} file as objects, cached per path (a failed fetch is retried next time). */
+export const loadTable = <T extends Record<string, unknown>>(path: string): Promise<{ period: string | null; rows: T[] }> =>
+  tableCache(path) as Promise<{ period: string | null; rows: T[] }>;
 
 export type CommunePoint = {
   code: string;

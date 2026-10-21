@@ -22,6 +22,9 @@ def _sales(con: duckdb.DuckDBPyConnection) -> None:
              -0.55, 47.47, "section", None) for i in range(12)]
     rows += [(f"b{i}", 2025, 1, False, 2000.0, "apartment", 2, "49007000AC", "49007", "49",
               -0.56, 47.48, "section", None) for i in range(4)]
+    # Paris: DVF files the city code, the section id starts with the arrondissement
+    rows += [(f"p{i}", 2025, 1 + i % 2, False, 10000.0, "apartment", 2, "75111000AB", "75056", "75",
+              2.38, 48.86, "section", None) for i in range(10)]
     # a new build and an excluded sale never enter section medians
     rows += [("n0", 2025, 1, True, 9000.0, "apartment", 2, "49007000AB", "49007", "49", -0.55, 47.47, "section", None),
              ("x0", 2025, 1, False, 9000.0, "apartment", 2, "49007000AB", "49007", "49", -0.55, 47.47, "section",
@@ -79,6 +82,11 @@ def test_section_points_need_ten_sales_and_stay_in_their_commune(serve):
     assert [r["section"] for r in rows] == ["49007000AB"]
     assert rows[0]["n"] == 12 and rows[0]["commune"] == "49007"
     assert rows[0]["median_price_m2"] < 9000  # new build and excluded sale left out
+
+
+def test_paris_sections_carry_their_arrondissement(serve):
+    rows = _rows(_load(serve, "points/sections/75.json"))
+    assert [(r["section"], r["commune"]) for r in rows] == [("75111000AB", "75111")]
 
 
 def test_rent_curve_only_for_single_code_places():

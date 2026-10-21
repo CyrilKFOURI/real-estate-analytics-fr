@@ -1,8 +1,12 @@
 // Choropleth map data (docs/features/005-map/spec.md): GeoJSON layers written by the pipeline's
 // mapdata stage, metrics, quintile classes and colours.
+import { cached } from './cache.ts';
 import { formatEurosPerM2, formatPercent, formatSignedPercent } from './format.ts';
 
 const DATA_URL = process.env.EXPO_PUBLIC_DATA_URL ?? '/data';
+
+// a dev server or static host answers a missing file with the app page (HTML, status 200)
+const isHtml = (response: Response) => (response.headers.get('content-type') ?? '').includes('text/html');
 
 export type MapProperties = {
   code: string;
@@ -77,35 +81,28 @@ export const METRICS: Metric[] = [
 export const metricKey = (base: MetricBase, type: 'apartment' | 'house'): string =>
   METRICS.find((m) => m.base === base)?.areaWide ? base : `${base}_${type}`;
 
-/** 5 classes from light to dark (ColorBrewer YlGnBu, colour-blind safe). */
 /** Quintile breaks published by the pipeline (map/breaks.json), per layer and metric key. */
 export type Breaks = { departements: Record<string, number[]>; communes: Record<string, number[]> };
 
-let breaksPromise: Promise<Breaks> | null = null;
-
-export const loadBreaks = (): Promise<Breaks> => {
-  breaksPromise ??= fetch(`${DATA_URL}/map/breaks.json`).then((response) => {
-    if (!response.ok) {
-      throw new Error(`carte breaks.json : HTTP ${response.status}`);
+const breaksCache = cached((path) =>
+  fetch(`${DATA_URL}/map/${path}`).then((response) => {
+    if (!response.ok || isHtml(response)) {
+      throw new Error(`carte ${path} : HTTP ${response.ok ? 404 : response.status}`);
     }
     return response.json() as Promise<Breaks>;
-  });
-  return breaksPromise;
-};
+  }),
+);
+
+export const loadBreaks = (): Promise<Breaks> => breaksCache('breaks.json');
 
 const fetchLayer = async (path: string): Promise<MapLayer> => {
   const response = await fetch(`${DATA_URL}/map/${path}`);
-  if (!response.ok) {
-    throw new Error(`carte ${path} : HTTP ${response.status}`);
+  if (!response.ok || isHtml(response)) {
+    throw new Error(`carte ${path} : HTTP ${response.ok ? 404 : response.status}`);
   }
   return response.json() as Promise<MapLayer>;
 };
 
-const cache = new Map<string, Promise<MapLayer>>();
+const layerCache = cached(fetchLayer);
 
-export const loadMapLayer = (path: 'departements.geojson' | `communes/${string}.geojson`): Promise<MapLayer> => {
-  if (!cache.has(path)) {
-    cache.set(path, fetchLayer(path));
-  }
-  return cache.get(path)!;
-};
+export const loadMapLayer = (path: 'departements.geojson' | `communes/${string}.geojson`): Promise<MapLayer> => layerCache(path);
