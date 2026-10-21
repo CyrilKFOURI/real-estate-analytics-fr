@@ -172,10 +172,14 @@ def test_energy_by_type_and_bands_every_year(serve):
 def test_stock_oll_and_meta(serve):
     angers = _place(serve, "commune", "49007")
     assert angers["stock"]["share_houses"] == 0.22
-    assert angers["oll"]["agglomeration"] == "Agglomération d'Angers"
-    rows = [dict(zip(angers["oll"]["fields"], r)) for r in angers["oll"]["rows"]]
-    assert {r["year"] for r in rows} == {2024, 2025}
-    assert angers["meta"]["prices"]["source"].startswith("DVF")
+    # an agglomeration's rents are written once, communes point to them
+    assert angers["oll"] == {"agglo_code": "L4900", "agglomeration": "Agglomération d'Angers"}
+    oll = json.loads((serve / "oll" / "L4900.json").read_text(encoding="utf-8"))
+    assert {dict(zip(oll["fields"], r))["year"] for r in oll["rows"]} == {2024, 2025}
+    # sources are the same for every place: one file
+    assert "meta" not in angers
+    meta = json.loads((serve / "meta.json").read_text(encoding="utf-8"))
+    assert meta["prices"]["source"].startswith("DVF")
 
 
 def test_neighbours_nearest_first_without_itself(serve):

@@ -67,7 +67,7 @@ ROWS = [
     row(333333, "01001", "Appartement", 45, lot="3", plan="5"),
     row(333333, "01001", "Appartement", 45, lot="4", plan="5"),
     # house on a large estate -> kept for the model, out of market cells
-    row(444444, "01001", "Maison", 120, rooms=5, plan="9", culture="T", land=8000),
+    row(444444, "01001", "Maison", 120, rooms=5, plan="9", culture="T", land=60000),
     # flat sold with 3 outbuildings -> kept for the model, out of market cells
     row(222222, "01001", "Appartement", 40, lot="20", plan="6"),
     row(222222, "01001", "Dépendance", None, lot="21", plan="6"),
@@ -121,6 +121,11 @@ def test_same_flat_on_two_parcels_kept(con):
 
 def test_large_land_house_flagged(con):
     assert _sale(con, 444444, "market_excluded") == ("large_land",)
+
+
+def test_land_cap_share_counts_every_house(con):
+    # houses of département 01: 300000, 250000 and the estate 444444: 1 of 3 is out
+    assert marts.land_cap_share(con)["01"] == pytest.approx(1 / 3, abs=1e-4)
 
 
 def test_many_outbuildings_flagged(con):

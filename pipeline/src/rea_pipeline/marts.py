@@ -161,7 +161,8 @@ def land_cap_share(con: duckdb.DuckDBPyConnection) -> dict[str, float]:
     """Share of house sales left out of market cells for large land, per département (run report)."""
     return {
         dep: round(share, 4) for dep, share in con.execute(
-            """SELECT code_departement, avg((market_excluded = 'large_land')::INTEGER)
+            # every house counts: market_excluded is NULL for the ones kept
+            """SELECT code_departement, avg(coalesce(market_excluded = 'large_land', false)::INTEGER)
                FROM dvf_sales WHERE property_type = 'house' GROUP BY 1 ORDER BY 2 DESC"""
         ).fetchall()
     }

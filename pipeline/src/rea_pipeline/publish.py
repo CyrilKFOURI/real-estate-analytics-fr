@@ -6,7 +6,9 @@ data/serve/
                              (type × size × new/existing × period), socio, housing stock, local tax,
                              energy (DPE) by type, rent control, market score, price bands per year,
                              OLL rents in place, the latest period and the typical deal of every cell,
-                             neighbouring places, and the source of each block (meta)
+                             neighbouring places, a pointer to its OLL agglomeration
+  meta.json                  source of each block (same for every place)
+  oll/<agglomeration>.json   OLL rents in place of one agglomeration (yearly series + latest detail)
   ranking.json               catalogue of ranking files and their period
   ranking/<type>_<size>.json communes/arrondissements of one segment (n >= 30, yield not excluded)
   map/                       see mapdata.py
@@ -171,9 +173,11 @@ def _neighbours(con: duckdb.DuckDBPyConnection, min_sales: int) -> dict[tuple[st
     return out
 
 
-def _extras(con: duckdb.DuckDBPyConnection) -> dict[tuple[str, str], dict]:
-    """Optional per-place blocks from the other KPI tables (absent tables are skipped)."""
+def _extras(con: duckdb.DuckDBPyConnection) -> tuple[dict[tuple[str, str], dict], dict[str, dict]]:
+    """Optional per-place blocks from the other KPI tables (absent tables are skipped), and the
+    OLL series per agglomeration (written once, places point to them)."""
     extras: dict[tuple[str, str], dict] = {}
+    series: dict[str, dict] = {}
 
     def put(key, name, value):
         extras.setdefault(key, {})[name] = value
@@ -217,7 +221,6 @@ def _extras(con: duckdb.DuckDBPyConnection) -> dict[tuple[str, str], dict]:
         ).fetchall():
             put((level, code), "stock", {c: _round(v) for c, v in zip(columns, values) if v is not None})
     if _has_table(con, "kpi_rent_oll") and _has_table(con, "oll_commune"):
-        series: dict[str, dict] = {}
         for agglo, name, *values in con.execute(
             f"""WITH latest AS (SELECT agglo_code, max(year) AS y FROM kpi_rent_oll GROUP BY agglo_code)
                 SELECT o.agglo_code, o.agglomeration, {_select(con, 'kpi_rent_oll', OLL_FIELDS)}
@@ -231,8 +234,8 @@ def _extras(con: duckdb.DuckDBPyConnection) -> dict[tuple[str, str], dict]:
             block["rows"].append([_round(v) for v in values])
         for level, code, agglo in con.execute("SELECT geo_level, geo_code, agglo_code FROM oll_commune").fetchall():
             if agglo in series:
-                put((level, code), "oll", series[agglo])
-    return extras
+                put((level, code), "oll", {"agglo_code": agglo, "agglomeration": series[agglo]["agglomeration"]})
+    return extras, series
 
 
 def _meta(con: duckdb.DuckDBPyConnection, run_id: str) -> dict:
@@ -280,7 +283,7 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
             con, f"SELECT geo_level, geo_code, {_select(con, 'kpi_socio', SOCIO_FIELDS)} FROM kpi_socio"
         ).items()
     }
-    extras = _extras(con)
+    extras, oll_series = _extras(con)
     derived = _latest_and_typical(con, min_sales)
     neighbours = _neighbours(con, min_sales)
     meta = _meta(con, run_id)
@@ -308,7 +311,6 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
             "departement": departement,
             "region": region,
             "run_id": run_id,
-            "meta": meta,
             "price_fields": PRICE_FIELDS,
             "prices": prices[(level, code)],
             "yield_fields": YIELD_FIELDS,
@@ -334,6 +336,12 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
                    ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
+    (staging / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    for agglo, block in oll_series.items():
+        target = staging / "oll" / f"{agglo}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(block, ensure_ascii=False, separators=(",", ":"), default=float),
+                          encoding="utf-8")
     ranking = _write_ranking(con, staging, run_id)
     have_contours = all((mapdata.CONTOURS_DIR / f"{n}.geojson.gz").exists() for n in mapdata.LAYERS.values())
     map_layer = mapdata.write_map_layer(con, staging, min_sales) if have_contours else "no contours"

@@ -15,7 +15,9 @@ MIN_SURFACE_M2 = 9
 MIN_PRICE_EUR = 1_000
 # Kept for the price model but left out of market cells (docs/research/segmentation_study.md §4.2):
 # an estate's price is mostly land, a flat with many outbuildings is not a bare flat.
-MAX_HOUSE_LAND_M2 = 5_000
+# 5 ha: in rural départements (Gers, Lot, Creuse) a fifth of houses stand on more than 5 000 m²,
+# so a lower cap would remove the normal market there; at 5 ha no département loses 3 % (2026-10-21).
+MAX_HOUSE_LAND_M2 = 50_000
 MAX_OUTBUILDINGS = 2
 
 
