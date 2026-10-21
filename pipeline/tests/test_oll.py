@@ -99,7 +99,7 @@ def test_centre_and_zone_rows_skipped(con):
 
 
 def test_communes_attached(con):
-    rows = dict(con.execute("SELECT code_commune, agglo_code FROM oll_commune").fetchall())
+    rows = dict(con.execute("SELECT geo_code, agglo_code FROM oll_commune WHERE geo_level = 'commune'").fetchall())
     assert rows == {"35238": "L3500", "35051": "L3500", "35360": "L3501"}
 
 

@@ -88,8 +88,20 @@ Inputs: price, notary fees (default 7.5% old / 2.5% new), works, furniture, rent
 | D15 | Leverage effect | re = rp + (rp − rd) × D/E | Later |
 | D16 | BRRRR | max price = ARV×0.70 − works; refi = ARV×0.75; equity left; ARV from M1/M2 comparables | Later |
 | D17 | Break-even occupancy | (opex + debt service) / gross potential rent | Later |
+| D18 | Recoverable charges provision | ANIL rent (charges incl.) − provision × surface = rent excl. charges; provision 1.5 €/m²/month (flats), 0.5 (houses), editable. Order of magnitude between USH 2020 social-housing charges (~0.8 €/m²/month, no heating) and private flats with collective heating (2.5–4 €/m²/month). Checked 2026-10-21 (`CHARGES_RULES`, `deals.py`) | Done |
 
 All FR-REG thresholds (HCSF, micro rates, notary %, DPE calendar) live in **one versioned config file** `config/fr_rules_2026.yaml`, checked once a year.
+
+### Comparable segments (013, done — docs/research/segmentation_study.md)
+- Cells: area × type (apartment / house) × size (flats T1–T4, 5+; houses 1-3, 4, 5, 6+) × condition (existing / new
+  build, VEFA all sizes only) × period. Type `all` is context only: never a yield, score, band, map colour or rank.
+- One threshold set: published from 10 sales, `reliability = low` under 30, rankings / scores / map colours from 30.
+- Rent per m² read on each commune's ANIL curve at the cell's median surface (slope fitted on the 37/52/72 m² flat
+  files, clamped to [−0.8, 0], surface clamped to 25–110 m²); houses borrow the flat slope (`house_approx`).
+  Yields pair exactly the same cell; implausible ones are published with `status = excluded` and a reason.
+- `typical_deal` (D1–D3, D5–D7, D11, taxe foncière estimate) is precomputed per cell with the default financing and
+  the D18 provision, with the same formulas as core-kpi (shared fixture `pipeline/tests/fixtures/typical_deal_cases.json`).
+- OLL rents in place (hors charges) per agglomeration and year 2014–2025, attached to the agglomeration's communes.
 
 ## 3. Display rules
 - Hide any market cell with `n_sales < 10`; show "low confidence" for 10–29.

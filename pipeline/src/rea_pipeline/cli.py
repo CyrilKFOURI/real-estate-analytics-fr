@@ -22,6 +22,9 @@ PUBLISHED_LOCAL_TAX = paths.MARTS / "kpi_local_tax.parquet"
 PUBLISHED_DPE = paths.MARTS / "kpi_dpe.parquet"
 PUBLISHED_SCORES = paths.MARTS / "kpi_score.parquet"
 PUBLISHED_OLL = paths.MARTS / "kpi_rent_oll.parquet"
+PUBLISHED_OLL_COMMUNES = paths.MARTS / "oll_commune.parquet"
+PUBLISHED_STOCK = paths.MARTS / "kpi_stock.parquet"
+COMMUNE_POINTS = paths.MARTS / "commune_point.parquet"
 APP_PUBLIC_DATA = paths.ROOT.parent / "apps" / "app" / "public" / "data"
 
 
@@ -149,6 +152,10 @@ def build_dvf(skip_ingest: bool) -> int:
         oll_next = PUBLISHED_OLL.with_name("kpi_rent_oll.next.parquet")
         stage("publish oll", oll.export_published(con, oll_next))
         oll_next.replace(PUBLISHED_OLL)
+        for table, target in (("oll_commune", PUBLISHED_OLL_COMMUNES), ("kpi_stock", PUBLISHED_STOCK)):
+            nxt = target.with_name(f"{table}.next.parquet")
+            con.execute(f"COPY {table} TO '{nxt.as_posix()}' (FORMAT parquet)")
+            nxt.replace(target)
         stage("S5 publish json", publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id))
         report["status"] = "success"
     except GateFailed as failed:
@@ -232,7 +239,9 @@ def main() -> None:
         for table, path in (("kpi_price", PUBLISHED_PRICE_KPIS), ("kpi_yield", PUBLISHED_YIELD_KPIS),
                             ("kpi_socio", PUBLISHED_SOCIO_KPIS), ("kpi_price_bands", PUBLISHED_PRICE_BANDS),
                             ("kpi_local_tax", PUBLISHED_LOCAL_TAX), ("kpi_dpe", PUBLISHED_DPE),
-                            ("kpi_score", PUBLISHED_SCORES), ("kpi_rent_oll", PUBLISHED_OLL)):
+                            ("kpi_score", PUBLISHED_SCORES), ("kpi_rent_oll", PUBLISHED_OLL),
+                            ("oll_commune", PUBLISHED_OLL_COMMUNES), ("kpi_stock", PUBLISHED_STOCK),
+                            ("commune_point", COMMUNE_POINTS)):
             if path.exists():
                 con.execute(f"CREATE TABLE {table} AS SELECT * FROM '{path.as_posix()}'")
         refs.build_rent_control(con)

@@ -252,9 +252,15 @@ def build_oll_kpis(con: duckdb.DuckDBPyConnection, directory: Path, zones_csv: P
     con.execute(
         f"""
         CREATE OR REPLACE TABLE oll_commune AS
-        SELECT DISTINCT m.code_commune, z.agglo_code
-        FROM read_csv('{zones_csv.as_posix()}', header = true, all_varchar = true) z
-        JOIN commune_map m ON m.code = z.code_commune
+        WITH located AS (
+            SELECT m.code_commune, m.code_arrondissement, z.agglo_code
+            FROM read_csv('{zones_csv.as_posix()}', header = true, all_varchar = true) z
+            JOIN commune_map m ON m.code = z.code_commune
+        )
+        SELECT DISTINCT 'commune' AS geo_level, code_commune AS geo_code, agglo_code FROM located
+        UNION
+        SELECT DISTINCT 'arrondissement', code_arrondissement, agglo_code FROM located
+        WHERE code_arrondissement IS NOT NULL
         """
     )
 
