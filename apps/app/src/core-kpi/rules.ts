@@ -12,6 +12,8 @@ export const FR_RULES = {
   rentCountedByBanks: 0.7,
   /** Delagrandanne's quick test: 70 % of the rent must cover the loan payment. */
   quickTestRentShare: 0.7,
+  /** Median global built-property tax rate of French communes (REI 2025), for the taxe foncière estimate. */
+  nationalMedianTfpbRate: 0.403,
 } as const;
 
 /** Income tax on rents, long-term rental (KPI_SPEC D13). Check each finance law. */

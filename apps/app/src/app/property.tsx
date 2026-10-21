@@ -20,6 +20,7 @@ import {
   summary,
 } from '@/core-kpi/assessment';
 import { analyzeDeal } from '@/core-kpi/deal';
+import { estimateTaxeFonciere, mergeApartmentLand } from '@/core-kpi/estimates';
 import { DEFAULTS, FR_RULES } from '@/core-kpi/rules';
 import { loadPlace } from '@/data/api';
 import { EFFECT_LABELS, type Estimate, requestEstimate } from '@/data/estimate';
@@ -158,7 +159,7 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
       furniture: 0,
       rentMonthly,
       vacancyMonths: DEFAULTS.vacancyMonths,
-      taxeFonciereYearly: rentMonthly, // ~1 month of rent until REI rates are ingested
+      taxeFonciereYearly: estimateTaxeFonciere(rentMonthly, place?.local_tax?.tfpb_rate),
       nonRecoverableChargesYearly: 0,
       pnoInsuranceYearly: DEFAULTS.pnoInsuranceYearly,
       managementShare: DEFAULTS.managementShare,
@@ -183,8 +184,9 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
     currentYear: new Date().getFullYear(),
   });
   const cashFlow = cashFlowVerdict(deal.cashFlowMonthly);
-  const effects = estimate.explanation.effects.slice(0, MAX_EFFECTS);
-  const otherEffects = estimate.explanation.effects.slice(MAX_EFFECTS);
+  const allEffects = mergeApartmentLand(estimate.explanation.effects, form.propertyType);
+  const effects = allEffects.slice(0, MAX_EFFECTS);
+  const otherEffects = allEffects.slice(MAX_EFFECTS);
   const otherProduct = otherEffects.reduce((product, e) => product * (1 + e.effect_pct), 1) - 1;
 
   return (
@@ -224,7 +226,7 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
         <View style={[styles.table, { borderColor: theme.border }]}>
           <View style={styles.tableRow}>
             <ThemedText type="small" style={styles.tableLabel}>
-              Prix de départ (bien moyen en France)
+              Prix de départ (bien moyen en France, maisons et appartements)
             </ThemedText>
             <ThemedText type="small">{formatEurosPerM2(estimate.explanation.base_price_m2)}</ThemedText>
           </View>
@@ -303,7 +305,7 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
 
       <Block
         title="3. Est-ce que l'argent tourne ?"
-        source={`Hypothèses : apport 10 %, crédit ${formatPercent(DEFAULTS.loanRate)} sur ${DEFAULTS.loanYears} ans, 1 mois de vacance, taxe foncière ≈ 1 mois de loyer. Avant impôt.`}>
+        source={`Hypothèses : apport 10 %, crédit ${formatPercent(DEFAULTS.loanRate)} sur ${DEFAULTS.loanYears} ans, 1 mois de vacance, taxe foncière estimée avec le taux de la commune. Avant impôt.`}>
         <View style={styles.tiles}>
           <KpiTile
             label="Cash-flow avant impôt"

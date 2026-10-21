@@ -32,3 +32,9 @@ Rule followed: code → tests → real-data checks (pipeline gates) → browser 
 - Package: `data/models/rea-price-check-fr/20261021/` (not published).
 - Out-of-time test (801 k sales, 2025-H2 → 2026-H1): median abs. error **16.0 %**, 59 % within ±20 %, bias −1.5 %, P10–P90 coverage **79.8 %** (target 80 %) — see `metrics.json` for baselines and segments.
 - Next: `cd ml && uv run rea-ml serve`, then test "Analyser un bien" on a real address; raise `max_rounds` (best iteration hit the 3 000 cap).
+
+## Morning (2026-10-21)
+- `rea-ml serve` was never registered in the CLI (an edit that silently did not apply): fixed + CLI test.
+- **Property dashboard verified end to end** in the browser on "12 rue Lenepveu, Angers", T2 45 m², 150 k€: section 49007000BS, estimate 167 979 € (125–223 k€), verdict consistent (−10.7 %), 5 comparables in the same section, rent 750 €/month, cash-flow −325 €/month.
+- Explanation: for a flat, land and type effects merged into "Appartement (sans terrain)".
+- Taxe foncière default now scales the one-month rule by the commune rate / national median (40.3 %): Angers ≈ 1 054 €/yr instead of 750.

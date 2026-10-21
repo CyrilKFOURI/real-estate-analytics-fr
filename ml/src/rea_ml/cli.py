@@ -15,6 +15,8 @@ def main() -> None:
     predict = sub.add_parser("predict", help="estimate properties with a packaged model")
     predict.add_argument("folder")
     predict.add_argument("properties", help='JSON list, e.g. \'[{"property_type": "apartment", ...}]\'')
+    serve = sub.add_parser("serve", help="local HTTP API for the app (POST /estimate)")
+    serve.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
 
     if args.command == "train":

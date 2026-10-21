@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { analyzeDeal, type DealInput, type MarketReference } from '@/core-kpi/deal';
+import { estimateTaxeFonciere } from '@/core-kpi/estimates';
 import { DEFAULTS, FR_RULES, TAX_RULES } from '@/core-kpi/rules';
 import { breakEvenOccupancy, brrrr, leverageEffect, projectDeal } from '@/core-kpi/projection';
 import { compareTaxRegimes, type TaxRegime } from '@/core-kpi/tax';
@@ -89,8 +90,7 @@ const prefillFromPlace = async (level: GeoLevel, code: string, segment: Segment)
       surfaceM2: String(Math.round(surface)),
       ...(rentMonthly && {
         rentMonthly: round(rentMonthly, 10),
-        // rough rule of thumb until taxe foncière rates (REI) are ingested: about one month of rent
-        taxeFonciereYearly: round(rentMonthly, 10),
+        taxeFonciereYearly: round(estimateTaxeFonciere(rentMonthly, place.local_tax?.tfpb_rate), 10),
       }),
       downPayment: round(price * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare, 500),
     },
@@ -145,7 +145,7 @@ export default function SimulatorScreen() {
         downPayment: round(Number(params.price) * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare, 500),
       }),
       ...(params.surface && { surfaceM2: params.surface }),
-      ...(params.rent && { rentMonthly: params.rent, taxeFonciereYearly: params.rent }),
+      ...(params.rent && { rentMonthly: params.rent }),
     };
     prefillFromPlace(params.level, params.code, segment).then((result) => {
       if (current && result) {
@@ -416,7 +416,7 @@ export default function SimulatorScreen() {
           <NumberField
             label="Taxe foncière"
             unit="€ / an"
-            hint={prefill ? 'Estimation grossière (~1 mois de loyer) : mettez le vrai montant' : undefined}
+            hint={prefill ? 'Estimée avec le taux de taxe foncière de la commune : mettez le vrai montant' : undefined}
             {...field('taxeFonciereYearly')}
           />
           <NumberField label="Charges de copro non récupérables" unit="€ / an" {...field('nonRecoverableChargesYearly')} />

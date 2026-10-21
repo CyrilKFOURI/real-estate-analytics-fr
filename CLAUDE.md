@@ -56,4 +56,5 @@ Pipeline: Python 3.12 + uv + DuckDB (pipeline/). App: Expo SDK 58 + Expo Router 
 - Expo Router `<Link asChild>` throws on array styles in dev: use `<Link style={...}>` without asChild.
 - INSEE and unpkg send no ETag: change detection must fall back to the content hash.
 - Price model: never use exact parcel coordinates (serve only has section points); never put a sale's own price in its features (OOF encodings).
+- A scripted str.replace that misses its target changes nothing silently: assert the old text is present (the `rea-ml serve` command was missing for a whole night).
 - Paris/Lyon/Marseille appear in DVF as arrondissement codes (751xx, 6938x, 132xx).
