@@ -22,7 +22,8 @@ def check_reference_bands(con: duckdb.DuckDBPyConnection) -> list[Check]:
         row = con.execute(
             """SELECT median_price_m2, n_sales FROM kpi_price
                WHERE geo_level = 'commune' AND geo_code = ? AND period_type = 'year'
-                 AND period = CAST(? AS VARCHAR) AND property_type = 'apartment' AND rooms_bucket = 'all'""",
+                 AND period = CAST(? AS VARCHAR) AND property_type = 'apartment' AND rooms_bucket = 'all'
+                 AND condition = 'existing'""",
             [code, year],
         ).fetchone()
         if row is None:
@@ -62,6 +63,21 @@ def check_clean(con: duckdb.DuckDBPyConnection) -> list[Check]:
         ("one row per mutation", duplicates == 0, f"duplicates={duplicates}"),
         ("no null commune", null_communes == 0, f"nulls={null_communes}"),
     ]
+
+
+def check_bucket_sums(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    """V8: for flats and houses, the size cells of a place and period add up to "all sizes"
+    (unknown sizes are left out of both), so a page never shows parts that exceed the whole."""
+    mismatches = con.execute(
+        """SELECT count(*) FROM (
+               SELECT geo_level, geo_code, period, property_type,
+                      sum(n_sales) FILTER (WHERE rooms_bucket <> 'all') AS parts,
+                      max(n_sales) FILTER (WHERE rooms_bucket = 'all') AS whole
+               FROM kpi_price WHERE condition = 'existing' AND property_type IN ('apartment', 'house')
+               GROUP BY ALL)
+           WHERE parts IS DISTINCT FROM whole"""
+    ).fetchone()[0]
+    return [("size cells add up to all sizes", mismatches == 0, f"{mismatches} mismatching cells")]
 
 
 # Gross yield bands (12 × asking rent / median price) for apartments, latest full year.

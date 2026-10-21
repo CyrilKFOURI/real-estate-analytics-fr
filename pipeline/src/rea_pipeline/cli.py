@@ -72,6 +72,8 @@ def build_dvf(skip_ingest: bool) -> int:
         stage("S2 clean", n_sales)
         _gate("V1", validate.check_clean(con), report)
 
+        land_share = marts.land_cap_share(con)
+        stage("S2 large-land share (houses, worst départements)", dict(list(land_share.items())[:5]))
         marts.build_price_kpis(con, run_id)
         stage("S3 marts", con.execute("SELECT count(*) FROM kpi_price").fetchone()[0])
         marts.build_price_band_kpis(con)
@@ -79,7 +81,8 @@ def build_dvf(skip_ingest: bool) -> int:
         _gate(
             "V2",
             validate.check_reference_bands(con)
-            + validate.check_national_drift(con, PUBLISHED_PRICE_KPIS),
+            + validate.check_national_drift(con, PUBLISHED_PRICE_KPIS)
+            + validate.check_bucket_sums(con),
             report,
         )
 
