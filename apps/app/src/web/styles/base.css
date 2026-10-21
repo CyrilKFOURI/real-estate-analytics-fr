@@ -155,3 +155,8 @@
 .cy-unit { display: inline-flex; align-items: center; gap: 4px; }
 .cy-unit .cy-input { width: 90px; text-align: right; }
 .cy-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* compare: grouped rows, colour key in headers, best value underlined */
+.cy-compare th i { display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; }
+.cy-compare .cy-group td { background: var(--surface-2); color: var(--ink-3); font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; }
+.cy-compare td.cy-best { color: var(--ink-1); font-weight: 600; text-decoration: underline; text-decoration-color: var(--pos); text-decoration-thickness: 2px; text-underline-offset: 3px; }
