@@ -44,3 +44,4 @@ example
 
 # KPI data copied by 'uv run rea sync-app'
 public/data/
+public/vendor/
