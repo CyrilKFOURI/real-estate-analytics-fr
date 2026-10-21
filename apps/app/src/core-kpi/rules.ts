@@ -52,6 +52,18 @@ export const CAPITAL_GAINS_RULES = {
 /** BRRRR rules of thumb (Greene): offer ≤ 70 % of after-repair value minus works, refinance at 75 %. */
 export const BRRRR_RULES = { maxOfferShareOfArv: 0.7, refinanceLtv: 0.75 } as const;
 
+/**
+ * Recoverable charges the tenant pays on top of the rent, €/m²/month (KPI_SPEC D18). ANIL asking rents
+ * include them; the simulator works on the rent excluding charges. Order of magnitude between the
+ * social-housing observatory (USH 2020: ~0.8 €/m²/month without heating) and private flats with
+ * collective heating (2.5–4 €/m²/month); houses mostly pay water and waste tax. Editable estimate.
+ */
+export const CHARGES_RULES = {
+  apartmentM2Monthly: 1.5,
+  houseM2Monthly: 0.5,
+  checkedOn: '2026-10-21',
+} as const;
+
 /** Prefill values, all editable in the simulator. */
 export const DEFAULTS = {
   downPaymentShare: 0.1,
