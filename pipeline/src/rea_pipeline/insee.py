@@ -117,6 +117,90 @@ def build_socio_kpis(con: duckdb.DuckDBPyConnection, comparateur_csv: Path, run_
     )
 
 
+HOUSING_URL = "https://www.insee.fr/fr/statistiques/fichier/8581474/base-cc-logement-2022_csv.zip"
+HOUSING_MEMBER = "base-cc-logement-2022.CSV"
+APARTMENT_PERIODS = [f"P22_RPAPPART_ACH{y}" for y in (1919, 1945, 1970, 1990, 2005, 2019)]
+HOUSE_PERIODS = [f"P22_RPMAISON_ACH{y}" for y in (1919, 1945, 1970, 1990, 2005, 2019)]
+STOCK_MEASURES = (
+    "P22_LOG", "P22_RP", "P22_MAISON", "P22_APPART", "P22_RP_1P", "P22_RP_2P", "P22_RP_3P", "P22_RP_4P",
+    "P22_RP_5PP", "P22_RPMAISON", "P22_NBPI_RPMAISON", "P22_RPAPPART", "P22_NBPI_RPAPPART",
+    *APARTMENT_PERIODS, *HOUSE_PERIODS, "P22_RP_LOC", "P22_RP_LOCHLMV",
+)
+
+
+def ingest_housing() -> dict:
+    """INSEE census 2022 "Logement" base per commune and arrondissement (~43 MB zip)."""
+    with httpx.Client(follow_redirects=True, timeout=300, headers=HEADERS) as client:
+        archive = INSEE_DIR / "base-cc-logement-2022_csv.zip"
+        meta = download(HOUSING_URL, archive, client)
+    with zipfile.ZipFile(archive) as zf:
+        zf.extract(HOUSING_MEMBER, INSEE_DIR)
+    return meta
+
+
+def housing_file() -> Path:
+    return INSEE_DIR / HOUSING_MEMBER
+
+
+def build_stock_kpis(con: duckdb.DuckDBPyConnection, housing_csv: Path) -> None:
+    """Create table kpi_stock: what the housing stock is made of, per geo level (census 2022).
+
+    Communes and arrondissements as published; départements, régions and France add up the
+    communes (arrondissement rows and the Paris/Lyon/Marseille totals are not double counted).
+    Construction periods use the unambiguous ACH1919 … ACH2019 columns (ACH2019 = 2006–2019).
+    """
+    cast = ", ".join(f"TRY_CAST(\"{m}\" AS DOUBLE) AS {m}" for m in STOCK_MEASURES)
+    sums = ", ".join(f"sum({m}) AS {m}" for m in STOCK_MEASURES)
+    apt_total = " + ".join(APARTMENT_PERIODS)
+    house_total = " + ".join(HOUSE_PERIODS)
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE kpi_stock AS
+        WITH raw AS (
+            SELECT CODGEO AS code, {cast}
+            FROM read_csv('{housing_csv.as_posix()}', delim = ';', header = true, all_varchar = true)
+        ),
+        own AS (
+            SELECT CASE WHEN m.code_arrondissement IS NOT NULL THEN 'arrondissement' ELSE 'commune' END AS geo_level,
+                   r.*
+            FROM raw r JOIN commune_map m ON m.code = r.code
+            WHERE m.code = m.code_commune OR m.code = m.code_arrondissement
+        ),
+        communes AS (
+            SELECT r.*, m.departement, m.region FROM raw r JOIN commune_map m ON m.code = r.code
+            WHERE m.code = m.code_commune
+        ),
+        higher AS (
+            SELECT 'departement' AS geo_level, departement AS code, {sums} FROM communes GROUP BY departement
+            UNION ALL SELECT 'region', region, {sums} FROM communes GROUP BY region
+            UNION ALL SELECT 'france', 'FR', {sums} FROM communes
+        ),
+        stock AS (
+            SELECT geo_level, code, {", ".join(STOCK_MEASURES)} FROM own
+            UNION ALL SELECT * FROM higher
+        )
+        SELECT geo_level, code AS geo_code,
+               P22_LOG AS dwellings_2022,
+               P22_MAISON / nullif(P22_LOG, 0) AS share_houses,
+               P22_APPART / nullif(P22_LOG, 0) AS share_apartments,
+               P22_RP_1P / nullif(P22_RP, 0) AS main_homes_1p_share,
+               P22_RP_2P / nullif(P22_RP, 0) AS main_homes_2p_share,
+               P22_RP_3P / nullif(P22_RP, 0) AS main_homes_3p_share,
+               P22_RP_4P / nullif(P22_RP, 0) AS main_homes_4p_share,
+               P22_RP_5PP / nullif(P22_RP, 0) AS main_homes_5p_share,
+               P22_NBPI_RPAPPART / nullif(P22_RPAPPART, 0) AS avg_rooms_apartment,
+               P22_NBPI_RPMAISON / nullif(P22_RPMAISON, 0) AS avg_rooms_house,
+               (P22_RPAPPART_ACH1919 + P22_RPAPPART_ACH1945) / nullif({apt_total}, 0) AS apartments_before_1946_share,
+               P22_RPAPPART_ACH2019 / nullif({apt_total}, 0) AS apartments_after_2005_share,
+               (P22_RPMAISON_ACH1919 + P22_RPMAISON_ACH1945) / nullif({house_total}, 0) AS houses_before_1946_share,
+               P22_RPMAISON_ACH2019 / nullif({house_total}, 0) AS houses_after_2005_share,
+               P22_RP_LOC / nullif(P22_RP, 0) AS tenant_share,
+               P22_RP_LOCHLMV / nullif(P22_RP, 0) AS social_tenant_share
+        FROM stock
+        """
+    )
+
+
 def export_published(con: duckdb.DuckDBPyConnection, dest: Path) -> int:
     dest.parent.mkdir(parents=True, exist_ok=True)
     con.execute(

@@ -188,12 +188,16 @@ MIN_DPE_COVERAGE = 0.95
 
 def check_dpe(con: duckdb.DuckDBPyConnection) -> list[Check]:
     france, paris = (con.execute(
-        "SELECT share_fg FROM kpi_dpe WHERE geo_level = ? AND geo_code = ?", [level, code]
+        "SELECT share_fg FROM kpi_dpe WHERE geo_level = ? AND geo_code = ? AND property_type = 'all'", [level, code]
     ).fetchone() for level, code in (("france", "FR"), ("commune", "75056")))
+    paris_flats = con.execute(
+        "SELECT share_fg FROM kpi_dpe WHERE geo_level = 'commune' AND geo_code = '75056' AND property_type = 'apartment'"
+    ).fetchone()
     coverage = con.execute(
         """SELECT count(d.geo_code)::DOUBLE / count(*) FROM
                (SELECT DISTINCT geo_code FROM kpi_price WHERE geo_level = 'commune' AND n_sales >= 10) p
-           LEFT JOIN kpi_dpe d ON d.geo_level = 'commune' AND d.geo_code = p.geo_code"""
+           LEFT JOIN kpi_dpe d ON d.geo_level = 'commune' AND d.geo_code = p.geo_code
+                AND d.property_type = 'all'"""
     ).fetchone()[0]
     return [
         ("share F/G France", france is not None and 0.05 <= france[0] <= 0.25,
@@ -202,6 +206,8 @@ def check_dpe(con: duckdb.DuckDBPyConnection) -> list[Check]:
         ("share F/G Paris > France", france is not None and paris is not None and paris[0] > france[0],
          "missing" if paris is None else f"{paris[0]:.1%}"),
         ("dpe coverage", coverage >= MIN_DPE_COVERAGE, f"{coverage:.1%} of priced communes"),
+        ("flats DPE split present (Paris)", paris_flats is not None,
+         "missing" if paris_flats is None else f"{paris_flats[0]:.1%}"),
     ]
 
 

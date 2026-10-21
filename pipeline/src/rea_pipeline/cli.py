@@ -56,6 +56,7 @@ def build_dvf(skip_ingest: bool) -> int:
             stage("S1 ingest geo-dvf", geo.ingest_geo_dvf())
             stage("S1 ingest rents", rents.ingest_rents())
             stage("S1 ingest insee", insee.ingest_insee())
+            stage("S1 ingest insee housing", insee.ingest_housing())
             stage("S1 ingest rei", localtax.ingest_rei())
             stage("S1 ingest contours", mapdata.ingest_contours())
         refs.build_commune_map(con, ingest.communes_file())
@@ -88,6 +89,8 @@ def build_dvf(skip_ingest: bool) -> int:
 
         insee.build_socio_kpis(con, insee.comparateur_file(), run_id)
         stage("S3 socio", con.execute("SELECT count(*) FROM kpi_socio").fetchone()[0])
+        insee.build_stock_kpis(con, insee.housing_file())
+        stage("S3 housing stock", con.execute("SELECT count(*) FROM kpi_stock").fetchone()[0])
         _gate("V4", validate.check_socio(con), report)
 
         # rents are weighted by rental homes: after socio
@@ -176,6 +179,7 @@ def auto_update() -> int:
         "geo-dvf": geo.ingest_geo_dvf(),
         "rents": rents.ingest_rents(),
         "insee": insee.ingest_insee(),
+        "insee-housing": insee.ingest_housing(),
         "rei": localtax.ingest_rei(),
         "contours": mapdata.ingest_contours(),
         "dpe": _ingest_dpe_standalone(),

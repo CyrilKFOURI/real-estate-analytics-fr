@@ -10,9 +10,11 @@ from pathlib import Path
 
 import duckdb
 
+from .rents import rent_at_sql
+
 WEIGHTS_CONFIG = Path(__file__).resolve().parents[2] / "config" / "score_weights.json"
-# Affordability: yearly rent of a typical 45 m² 2-room flat over the median living standard.
-TYPICAL_FLAT_M2 = 45
+# Affordability: yearly rent of a typical home of the same type over the median living standard.
+TYPICAL_SURFACE_M2 = {"apartment": 45, "house": 90}
 SCORED_LEVELS = ("commune", "arrondissement")
 
 
@@ -35,8 +37,10 @@ def build_scores(con: duckdb.DuckDBPyConnection, config_path: Path = WEIGHTS_CON
         JOIN latest ON p.period = latest.latest_period
         LEFT JOIN kpi_yield y USING (geo_level, geo_code, period_type, period, property_type, rooms_bucket)
         LEFT JOIN kpi_socio s ON s.geo_level = p.geo_level AND s.geo_code = p.geo_code
+        -- a house is judged on houses' energy labels, a flat on flats'
         LEFT JOIN kpi_dpe d ON d.geo_level = p.geo_level AND d.geo_code = p.geo_code
-        WHERE p.geo_level IN ({levels}) AND p.rooms_bucket = 'all'
+             AND d.property_type = p.property_type
+        WHERE p.geo_level IN ({levels}) AND p.rooms_bucket = 'all' AND p.condition = 'existing'
           AND p.property_type IN ('apartment', 'house') AND p.n_sales >= {int(config["min_sales"])}
         """
     )
@@ -59,14 +63,24 @@ def build_scores(con: duckdb.DuckDBPyConnection, config_path: Path = WEIGHTS_CON
                    list(criterion ORDER BY rank DESC)[1:2] AS strengths,
                    list(criterion ORDER BY rank ASC)[1:2] AS weaknesses
             FROM score_ranks GROUP BY ALL
+        ),
+        typical AS (
+            SELECT * FROM (VALUES {", ".join(f"('{t}', {m})" for t, m in TYPICAL_SURFACE_M2.items())})
+                   t(property_type, surface)
+        ),
+        typical_rent AS (
+            SELECT a.geo_level, a.geo_code, a.property_type, t.surface,
+                   sum(a.w * {rent_at_sql("a.ref_rent_m2", "a.ref_surface", "a.slope", "t.surface")}) / sum(a.w) AS rent_m2
+            FROM rent_area a JOIN typical t USING (property_type)
+            WHERE a.geo_level IN ({levels})
+            GROUP BY ALL
         )
         SELECT i.geo_level, i.geo_code, i.period, i.property_type, round(s.score, 1) AS score,
                s.n_criteria, s.strengths, s.weaknesses,
-               12 * apt.rent_m2 * {TYPICAL_FLAT_M2} / i.median_living_standard AS rent_to_income
+               12 * r.rent_m2 * r.surface / i.median_living_standard AS rent_to_income
         FROM score_inputs i
         JOIN scored s USING (geo_level, geo_code, property_type)
-        LEFT JOIN kpi_yield apt ON apt.geo_level = i.geo_level AND apt.geo_code = i.geo_code
-             AND apt.period = i.period AND apt.property_type = 'apartment' AND apt.rooms_bucket = '2'
+        LEFT JOIN typical_rent r USING (geo_level, geo_code, property_type)
         """
     )
     con.execute("DROP TABLE score_ranks")

@@ -55,12 +55,18 @@ def build_local_tax_kpis(con: duckdb.DuckDBPyConnection, csv: Path, year: int) -
         f"""
         CREATE OR REPLACE TABLE kpi_local_tax AS
         WITH rei AS (
-            SELECT DEP || COM AS code, ({rate}) / 100 AS tfpb_rate
+            SELECT DEP || COM AS code, ({rate}) / 100 AS tfpb_rate,
+                   coalesce(TRY_CAST("E11" AS DOUBLE), 0) AS base
             FROM read_csv('{csv.as_posix()}', delim = ';', header = true, all_varchar = true,
                           encoding = 'latin-1')
         ),
         communes AS (
-            SELECT 'commune' AS geo_level, m.code_commune AS geo_code, any_value(r.tfpb_rate) AS tfpb_rate
+            -- a merged commune: its own row when the REI lists the current code, else the
+            -- mean of its former communes weighted by their built-property tax base (E11)
+            SELECT 'commune' AS geo_level, m.code_commune AS geo_code,
+                   coalesce(any_value(r.tfpb_rate) FILTER (WHERE r.code = m.code_commune),
+                            sum(r.tfpb_rate * r.base) / nullif(sum(r.base), 0),
+                            avg(r.tfpb_rate)) AS tfpb_rate
             FROM rei r JOIN commune_map m ON m.code = r.code
             GROUP BY m.code_commune
         )
