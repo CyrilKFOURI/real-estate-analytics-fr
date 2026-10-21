@@ -22,7 +22,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import deals, mapdata, paths
+from . import deals, mapdata, oll, paths
 from .marts import RELIABLE_SALES
 
 SCHEMA_VERSION = 2
@@ -338,6 +338,8 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
     )
     (staging / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     for agglo, block in oll_series.items():
+        if not oll.is_agglomeration_code(agglo):
+            raise ValueError(f"unexpected OLL agglomeration code {agglo!r}")  # it becomes a file name
         target = staging / "oll" / f"{agglo}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(block, ensure_ascii=False, separators=(",", ":"), default=float),

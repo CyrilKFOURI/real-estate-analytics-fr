@@ -126,3 +126,14 @@ def test_match_uses_the_national_file_of_each_zip_year(tmp_path):
 def test_zoning_in_an_unexpected_encoding():
     raw = b"Commune;Lib_com;Iris;Zone\r\n35238;Renn\x8fs;101;1"
     assert oll.zoning_rows("L3500", raw) == [("L3500", "35238")]
+
+
+@pytest.mark.parametrize("code,ok", [("L3500", True), ("L2A00", True), ("../x", False), ("L35/0", False), ("L350", False)])
+def test_agglomeration_code_pattern(code, ok):
+    assert oll.is_agglomeration_code(code) is ok
+
+
+def test_zones_reject_unsafe_codes(tmp_path):
+    dest = tmp_path / "zones.csv"
+    oll.write_zones(dest, {"Rennes": "L3500", "Evil": "../../x"}, [("L3500", "35238"), ("../../x", "35051")])
+    assert "../" not in dest.read_text(encoding="utf-8")

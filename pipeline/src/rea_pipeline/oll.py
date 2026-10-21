@@ -14,6 +14,7 @@ read (HTTP Range requests), not the 1.5 MB of map files around them.
 """
 import csv
 import io
+import re
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,8 @@ AGGLOMERATIONS_DATASET = (
 )
 FIRST_YEAR = 2014
 OLL_DIR = paths.RAW / "oll"
+# agglomeration codes become file names (serve/oll/<code>.json): only this shape is accepted
+AGGLOMERATION_CODE = re.compile(r"L[0-9][0-9AB][0-9]{2}")
 DIMENSIONS = ("Zone_complementaire", "Type_habitat", "epoque_construction_homogene",
               "anciennete_locataire_homogene", "nombre_pieces_homogene")
 
@@ -136,9 +139,14 @@ def match_all(directory: Path, fingerprints: list[tuple[str, str, int, int]]) ->
     return names
 
 
+def is_agglomeration_code(code: str) -> bool:
+    return AGGLOMERATION_CODE.fullmatch(code) is not None
+
+
 def write_zones(dest: Path, names: dict[str, str], zoning: list[tuple[str, str]]) -> None:
-    """zones.csv: agglo_code, agglomeration (national name), code_commune."""
-    code_to_name = {code: name for name, code in names.items()}
+    """zones.csv: agglo_code, agglomeration (national name), code_commune. Codes that do not
+    look like an OLL agglomeration code (they come from download URLs) are left out."""
+    code_to_name = {code: name for name, code in names.items() if is_agglomeration_code(code)}
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -174,6 +182,8 @@ def ingest_oll() -> dict:
             if not url.endswith(".zip") or "Base_OP_" not in url:
                 continue
             year, code = url.rsplit("Base_OP_", 1)[1].removesuffix(".zip").split("_", 1)
+            if not is_agglomeration_code(code) or not year.isdigit():
+                continue
             zips.setdefault(code, []).append((int(year), url))
         fingerprints, zoning, unreadable = [], [], {}
         for code, versions in sorted(zips.items()):
