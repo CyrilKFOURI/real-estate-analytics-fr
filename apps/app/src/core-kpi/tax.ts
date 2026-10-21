@@ -14,6 +14,8 @@ export type TaxResult = {
   socialCharges: number;
   totalTax: number;
   cashFlowAfterTaxMonthly: number;
+  /** D4: (NOI − tax) / total cost. */
+  netNetYield: number | null;
   /** réel foncier only: deficit carried (offsettable up to deficitFoncierCap on other income). */
   deficit: number;
   /** lmnp réel only: depreciation not usable this year, carried forward. */
@@ -57,6 +59,7 @@ const result = (
     socialCharges,
     totalTax,
     cashFlowAfterTaxMonthly: deal.cashFlowMonthly - totalTax / 12,
+    netNetYield: deal.totalCost > 0 ? (deal.noiYearly - totalTax) / deal.totalCost : null,
     deficit: extra.deficit ?? 0,
     carriedDepreciation: extra.carriedDepreciation ?? 0,
   };

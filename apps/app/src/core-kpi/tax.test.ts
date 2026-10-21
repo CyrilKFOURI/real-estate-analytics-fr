@@ -77,3 +77,9 @@ test('after-tax cash-flow subtracts the monthly tax', () => {
   const micro = compareTaxRegimes(INPUT, deal, 0.11)[0];
   close(micro.cashFlowAfterTaxMonthly, deal.cashFlowMonthly - micro.totalTax / 12, 0.01);
 });
+
+test('net-net yield is NOI minus tax over total cost', () => {
+  const deal = analyzeDeal(INPUT);
+  const micro = compareTaxRegimes(INPUT, deal, 0.3)[0];
+  close(micro.netNetYield ?? 0, (deal.noiYearly - micro.totalTax) / deal.totalCost, 1e-9);
+});

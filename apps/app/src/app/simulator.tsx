@@ -272,6 +272,7 @@ export default function SimulatorScreen() {
                         : tax.carriedDepreciation > 0
                           ? `Amortissement reporté ${formatEuros(tax.carriedDepreciation)}`
                           : `Impôt ${formatEuros(tax.totalTax)} / an`}
+                    {tax.eligible ? ` · rentabilité nette-nette ${formatPercent(tax.netNetYield)}` : ''}
                   </ThemedText>
                 </View>
                 <ThemedText
