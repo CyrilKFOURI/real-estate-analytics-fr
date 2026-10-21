@@ -55,6 +55,8 @@
 .cy-button { height: 28px; padding: 0 12px; border: 1px solid var(--ink-1); border-radius: var(--radius); background: var(--ink-1); color: var(--bg); font-size: var(--fs-small); font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .cy-button.ghost { background: transparent; color: var(--ink-1); border-color: var(--line-strong); }
 .cy-button:hover { opacity: 0.88; }
+.cy-app a.cy-button { color: var(--bg); }
+.cy-app a.cy-button.ghost { color: var(--ink-1); }
 
 /* docked panels on a grid; lines come from the panels' own borders */
 .cy-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-content: start; }
@@ -67,9 +69,10 @@
 .cy-note { font-size: var(--fs-small); color: var(--ink-3); }
 
 /* KPI ribbon: one continuous strip split by 1 px rules */
-.cy-ribbon { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(130px, 1fr); border-bottom: 1px solid var(--line); background: var(--surface); overflow-x: auto; }
-.cy-kpi { padding: 10px 14px; border-right: 1px solid var(--line); min-width: 0; }
-.cy-kpi-label { font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+/* wraps onto a second row instead of scrolling; the -1px margins keep single 1 px rules */
+.cy-ribbon { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border-bottom: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+.cy-kpi { padding: 10px 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; min-width: 0; }
+.cy-kpi-label { font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); display: flex; gap: 4px; align-items: center; line-height: 1.3; min-height: 14px; }
 .cy-kpi-value { font-size: var(--fs-value-lg); font-weight: 600; margin-top: 2px; white-space: nowrap; }
 .cy-kpi-detail { font-size: var(--fs-small); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -134,3 +137,16 @@
 .cy-chip i { width: 10px; height: 3px; display: inline-block; }
 .cy-chip button { border: 0; background: none; color: var(--ink-3); cursor: pointer; font: inherit; padding: 0 4px; }
 .cy-chip button:hover { color: var(--neg); }
+
+/* place page: identity line, section anchors, DPE strip, score */
+.cy-place-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-small); }
+.cy-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--ink-2); font-size: var(--fs-micro); letter-spacing: 0.04em; }
+.cy-tag.warn { border-color: var(--warn); color: var(--warn); }
+.cy-anchors { display: flex; overflow-x: auto; border-top: 1px solid var(--line); }
+.cy-anchors a { padding: 7px 12px; color: var(--ink-2); text-decoration: none; font-size: var(--fs-small); white-space: nowrap; border-right: 1px solid var(--line); }
+.cy-anchors a:hover { background: var(--surface-2); color: var(--ink-1); }
+.cy-panel[id] { scroll-margin-top: 8px; }
+.cy-dpe { display: flex; height: 22px; border: 1px solid var(--line); margin-bottom: 6px; }
+.cy-dpe span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-micro); font-weight: 600; min-width: 0; }
+.cy-score { padding: 4px 0 8px; }
+.cy-score b { font-size: 28px; font-weight: 600; }

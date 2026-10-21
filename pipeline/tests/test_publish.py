@@ -31,6 +31,7 @@ PRICES = [
     ("arrondissement", "75101", "year", "2025", False, "existing", "apartment", "all", 300, 13000.0, 500000.0, 38.0),
     ("france", "FR", "year", "2025", False, "existing", "apartment", "all", 800000, 3300.0, 180000.0, 55.0),
     ("region", "52", "year", "2025", False, "existing", "apartment", "all", 30000, 2700.0, 140000.0, 52.0),
+    ("departement", "49", "year", "2025", False, "existing", "apartment", "all", 9000, 2600.0, 135000.0, 52.0),
 ]
 
 # (code, type, bucket, rent €/m² charges incl., status)
@@ -202,6 +203,7 @@ def test_index_and_small_places(serve):
 
 def test_regions_and_departements_are_named(serve):
     assert _place(serve, "region", "52")["name"] == "Pays de la Loire"
+    assert _place(serve, "departement", "49")["region"] == "52"
 
 
 def test_ranking_per_segment(serve):

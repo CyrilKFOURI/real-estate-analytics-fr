@@ -302,6 +302,9 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
     staging = serve_dir.with_name(serve_dir.name + ".next")
     shutil.rmtree(staging, ignore_errors=True)
     departement_names = dashboard._departement_names()
+    departement_regions = dict(con.execute(
+        "SELECT departement, min(region) FROM commune_map WHERE departement IS NOT NULL GROUP BY departement"
+    ).fetchall())
     index = []
     sizes = []
     for level, code in sorted(prices):
@@ -310,6 +313,7 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
             name = "France"
         elif level == "departement":
             name = departement_names.get(code, name)
+            region = departement_regions.get(code)
         elif level == "region":
             name = dashboard.REGION_NAMES.get(code, name)
         doc = {
