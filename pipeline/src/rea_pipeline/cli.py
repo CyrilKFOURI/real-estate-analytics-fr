@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import duckdb
 
-from . import clean, dpe, geo, ingest, insee, localtax, mapdata, marts, paths, publish, refs, rents, scores, validate
+from . import clean, dpe, geo, ingest, insee, localtax, mapdata, marts, oll, paths, publish, refs, rents, scores, validate
 
 PUBLISHED_PRICE_KPIS = paths.MARTS / "kpi_price.parquet"
 PUBLISHED_YIELD_KPIS = paths.MARTS / "kpi_yield.parquet"
@@ -21,6 +21,7 @@ PUBLISHED_PRICE_BANDS = paths.MARTS / "kpi_price_bands.parquet"
 PUBLISHED_LOCAL_TAX = paths.MARTS / "kpi_local_tax.parquet"
 PUBLISHED_DPE = paths.MARTS / "kpi_dpe.parquet"
 PUBLISHED_SCORES = paths.MARTS / "kpi_score.parquet"
+PUBLISHED_OLL = paths.MARTS / "kpi_rent_oll.parquet"
 APP_PUBLIC_DATA = paths.ROOT.parent / "apps" / "app" / "public" / "data"
 
 
@@ -55,6 +56,7 @@ def build_dvf(skip_ingest: bool) -> int:
             stage("S1 ingest dvf", ingest.ingest_dvf())
             stage("S1 ingest geo-dvf", geo.ingest_geo_dvf())
             stage("S1 ingest rents", rents.ingest_rents())
+            stage("S1 ingest oll", oll.ingest_oll())
             stage("S1 ingest insee", insee.ingest_insee())
             stage("S1 ingest insee housing", insee.ingest_housing())
             stage("S1 ingest rei", localtax.ingest_rei())
@@ -99,6 +101,9 @@ def build_dvf(skip_ingest: bool) -> int:
         rents.build_yield_kpis(con)
         stage("S3 yields", con.execute("SELECT count(*) FROM kpi_yield").fetchone()[0])
         _gate("V3", validate.check_yields(con), report)
+        oll.build_oll_kpis(con, oll.national_dir(), oll.zones_file())
+        stage("S3 oll rents in place", {"rows": con.execute("SELECT count(*) FROM kpi_rent_oll").fetchone()[0],
+                                        "skipped": oll.last_skipped(con)})
 
         tax_year, rei_csv = localtax.rei_file()
         localtax.build_local_tax_kpis(con, rei_csv, tax_year)
@@ -141,6 +146,9 @@ def build_dvf(skip_ingest: bool) -> int:
         scores_next = PUBLISHED_SCORES.with_name("kpi_score.next.parquet")
         stage("publish scores", scores.export_published(con, scores_next))
         scores_next.replace(PUBLISHED_SCORES)
+        oll_next = PUBLISHED_OLL.with_name("kpi_rent_oll.next.parquet")
+        stage("publish oll", oll.export_published(con, oll_next))
+        oll_next.replace(PUBLISHED_OLL)
         stage("S5 publish json", publish.publish(con, marts.MIN_PUBLISHED_SALES, run_id))
         report["status"] = "success"
     except GateFailed as failed:
@@ -178,6 +186,7 @@ def auto_update() -> int:
         "dvf": ingest.ingest_dvf(),
         "geo-dvf": geo.ingest_geo_dvf(),
         "rents": rents.ingest_rents(),
+        "oll": oll.ingest_oll(),
         "insee": insee.ingest_insee(),
         "insee-housing": insee.ingest_housing(),
         "rei": localtax.ingest_rei(),
@@ -223,7 +232,7 @@ def main() -> None:
         for table, path in (("kpi_price", PUBLISHED_PRICE_KPIS), ("kpi_yield", PUBLISHED_YIELD_KPIS),
                             ("kpi_socio", PUBLISHED_SOCIO_KPIS), ("kpi_price_bands", PUBLISHED_PRICE_BANDS),
                             ("kpi_local_tax", PUBLISHED_LOCAL_TAX), ("kpi_dpe", PUBLISHED_DPE),
-                            ("kpi_score", PUBLISHED_SCORES)):
+                            ("kpi_score", PUBLISHED_SCORES), ("kpi_rent_oll", PUBLISHED_OLL)):
             if path.exists():
                 con.execute(f"CREATE TABLE {table} AS SELECT * FROM '{path.as_posix()}'")
         refs.build_rent_control(con)
