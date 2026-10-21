@@ -49,6 +49,13 @@ sample size and how it was obtained, and is paired only with values of the same 
 - Publish per agglomeration and its communes: rent in place €/m² (median, deciles 1/9) by type × rooms ×
   construction period × tenancy (< 1 year = new lettings proxy), yearly series, `n_obs`.
 - Shown as "loyers en place (OLL)" next to ANIL, with a trend; never mixed with ANIL in one figure.
+- Commune link (decided 2026-10-21): the national files name agglomerations without commune codes. Each
+  agglomeration's zip (data.gouv "résultats … par agglomération") has a zoning file (commune × IRIS → zone);
+  national rows are matched to agglomeration codes by fingerprint (observatory, year, observations of the
+  agglomeration-wide row), reading only the two small zip members by HTTP Range. Empty or unreadable zips fall
+  back to older years. Result 2026-10-21: 72 agglomerations, 3 313 communes; Aix-Marseille missing (its 2024 zip
+  is corrupt at the source); a national row named "L7500" duplicates Paris intra-muros and is ignored.
+  Agglomeration-wide figures only (centre/outskirts and zone rows skipped).
 
 ### 2.5 Other KPIs
 - DPE by `type_batiment` (apartment / house) per commune via the ADEME aggregation API; higher levels summed.

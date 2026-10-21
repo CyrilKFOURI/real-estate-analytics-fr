@@ -1,11 +1,12 @@
 # 013 tasks
-- [ ] Cleaning: dwelling count by lot, house land cap (with share-removed report), outbuildings rule, unknown rooms out of "all"
-- [ ] Marts: new size buckets, VEFA cells + new_premium, trim per département × type × size × year, n/basis/reliability, price bands every year without `all`
-- [ ] Rents: surface-adjusted apartment rent, house approximation, exact-cell yields, excluded status, higher levels weighted by rental homes
-- [ ] OLL ingest + publish (rents in place, yearly series)
-- [ ] DPE by type, INSEE stock by type, typed score, merged-commune tax rate, KPI metadata
-- [ ] Frontend precomputes: latest block, typical_deal (+ shared fixture test with core-kpi), neighbours, map/ranking breaks, typical_price, ranking per size
-- [ ] Charges provision: source the value, CHARGES_RULES, KPI_SPEC entry
-- [ ] JSON contract: schema_version, renamed fields; app adapted (types.ts, select.ts) so current screens stay right
-- [ ] Gates V3 extended + V8; 20-town before/after report in docs/NIGHT_LOG.md
-- [ ] Full rebuild, sync-app, browser check of town page / map / ranking / property
+- [x] Cleaning: dwelling count by lot, house land cap (with share-removed report), outbuildings rule, unknown rooms out of "all"
+- [x] Marts: new size buckets, VEFA cells + new_premium, trim per département × type × size × year, n/basis/reliability, price bands every year without `all`
+- [x] Rents: surface-adjusted apartment rent, house approximation, exact-cell yields, excluded status, higher levels weighted by rental homes
+- [x] OLL ingest + publish (rents in place, yearly series)
+- [x] DPE by type, INSEE stock by type, typed score, merged-commune tax rate, KPI metadata
+- [x] Frontend precomputes: latest block, typical_deal (+ shared fixture test with core-kpi), neighbours, map/ranking breaks, typical_price, ranking per size
+- [x] Charges provision: source the value, CHARGES_RULES, KPI_SPEC entry
+- [x] JSON contract: schema_version, renamed fields; app adapted (types.ts, select.ts) so current screens stay right
+- [x] Gates V3 extended + V8; 20-town before/after report in docs/NIGHT_LOG.md
+- [x] Full rebuild, sync-app, browser check of town page / map / ranking / property
+- Follow-ups: commune file max 42.7 KB (target 40); publish per-place rent curves so the property page reads the rent at the exact surface (014); ML retrained on the new clean sales (run 2026-10-21).

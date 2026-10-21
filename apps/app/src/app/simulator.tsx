@@ -9,14 +9,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { analyzeDeal, type DealInput, type MarketReference } from '@/core-kpi/deal';
-import { estimateTaxeFonciere } from '@/core-kpi/estimates';
+import { chargesProvisionM2 } from '@/core-kpi/typical-deal';
 import { DEFAULTS, FR_RULES, TAX_RULES } from '@/core-kpi/rules';
 import { breakEvenOccupancy, brrrr, leverageEffect, projectDeal } from '@/core-kpi/projection';
 import { compareTaxRegimes, type TaxRegime } from '@/core-kpi/tax';
 import { loadPlace } from '@/data/api';
 import { formatDecimal, formatEuros, formatEurosPerM2, formatPercent, formatSignedPercent } from '@/data/format';
 import { latestFullYear, type Segment, yieldFor } from '@/data/select';
-import type { GeoLevel, PropertyType, RoomsBucket } from '@/data/types';
+import type { DwellingType, GeoLevel, PropertyType, RoomsBucket } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 // Form values are kept as text so that "3," can be typed; parsed on every render.
@@ -67,30 +67,35 @@ type Prefill = {
   priceTrend?: { cagr: number; since: number };
 };
 
-/** Typical property of the segment: median price, surface = median price / median €/m², ANIL rent. */
+/** Typical property of the segment, precomputed by the pipeline (typical_deal): median price and
+ * surface, ANIL rent read at that surface minus the charges provision (D18), taxe foncière estimate. */
 const prefillFromPlace = async (level: GeoLevel, code: string, segment: Segment): Promise<Prefill | null> => {
   const place = await loadPlace(level, code);
   const year = latestFullYear(place.prices, segment);
   if (!year) {
     return null;
   }
-  const surface = year.median_price / year.median_price_m2;
+  const typical =
+    segment.propertyType === 'all' ? undefined : place.typical_deal?.[segment.propertyType]?.[segment.rooms];
   const rent = yieldFor(place.yields, segment, year.period);
-  const price = Math.round(year.median_price / 1000) * 1000;
-  const rentMonthly = rent ? rent.rent_m2 * surface : undefined;
+  const price = Math.round((typical?.price ?? year.median_price) / 1000) * 1000;
+  const surface = typical?.surface_m2 ?? year.median_surface_m2 ?? year.median_price / year.median_price_m2;
   return {
-    label: `${place.name ?? code}, prix et surface médians ${year.period}`,
+    label: `${place.name ?? code}, bien type ${year.period} (prix et surface médians)`,
     market: { medianPriceM2: year.median_price_m2, p25PriceM2: year.p25_price_m2, p75PriceM2: year.p75_price_m2 },
     priceTrend: year.cagr != null && year.cagr_since != null ? { cagr: year.cagr, since: year.cagr_since } : undefined,
-    rentNote: rent
-      ? `Loyer d'annonce ANIL ${formatDecimal(rent.rent_m2)} €/m² charges comprises : retirez les charges récupérables.`
-      : undefined,
+    rentNote:
+      rent && typical
+        ? `Loyer d'annonce ANIL ${formatDecimal(rent.rent_m2)} €/m² charges comprises, moins ${formatDecimal(
+            chargesProvisionM2(segment.propertyType as DwellingType),
+          )} €/m² de charges récupérables (estimation, modifiable).`
+        : undefined,
     form: {
       price: String(price),
       surfaceM2: String(Math.round(surface)),
-      ...(rentMonthly && {
-        rentMonthly: round(rentMonthly, 10),
-        taxeFonciereYearly: round(estimateTaxeFonciere(rentMonthly, place.local_tax?.tfpb_rate), 10),
+      ...(typical && {
+        rentMonthly: round(typical.rent_monthly, 10),
+        taxeFonciereYearly: round(typical.taxe_fonciere_yearly, 10),
       }),
       downPayment: round(price * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare, 500),
     },

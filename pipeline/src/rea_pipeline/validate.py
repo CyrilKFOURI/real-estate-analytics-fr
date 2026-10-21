@@ -22,7 +22,8 @@ def check_reference_bands(con: duckdb.DuckDBPyConnection) -> list[Check]:
         row = con.execute(
             """SELECT median_price_m2, n_sales FROM kpi_price
                WHERE geo_level = 'commune' AND geo_code = ? AND period_type = 'year'
-                 AND period = CAST(? AS VARCHAR) AND property_type = 'apartment' AND rooms_bucket = 'all'""",
+                 AND period = CAST(? AS VARCHAR) AND property_type = 'apartment' AND rooms_bucket = 'all'
+                 AND condition = 'existing'""",
             [code, year],
         ).fetchone()
         if row is None:
@@ -64,6 +65,21 @@ def check_clean(con: duckdb.DuckDBPyConnection) -> list[Check]:
     ]
 
 
+def check_bucket_sums(con: duckdb.DuckDBPyConnection) -> list[Check]:
+    """V8: for flats and houses, the size cells of a place and period add up to "all sizes"
+    (unknown sizes are left out of both), so a page never shows parts that exceed the whole."""
+    mismatches = con.execute(
+        """SELECT count(*) FROM (
+               SELECT geo_level, geo_code, period, property_type,
+                      sum(n_sales) FILTER (WHERE rooms_bucket <> 'all') AS parts,
+                      max(n_sales) FILTER (WHERE rooms_bucket = 'all') AS whole
+               FROM kpi_price WHERE condition = 'existing' AND property_type IN ('apartment', 'house')
+               GROUP BY ALL)
+           WHERE parts IS DISTINCT FROM whole"""
+    ).fetchone()[0]
+    return [("size cells add up to all sizes", mismatches == 0, f"{mismatches} mismatching cells")]
+
+
 # Gross yield bands (12 × asking rent / median price) for apartments, latest full year.
 # Paris is known for ~3–4.5 %, the national figure for ~5–7 %.
 YIELD_BANDS = {
@@ -89,27 +105,32 @@ def check_yields(con: duckdb.DuckDBPyConnection) -> list[Check]:
                AND period = ? AND property_type = 'apartment' AND rooms_bucket = 'all'""",
             [level, code, latest],
         ).fetchone()
-        ok = row is not None and low <= row[0] <= high
+        ok = row is not None and row[0] is not None and low <= row[0] <= high
         detail = "missing" if row is None else f"yield={row[0]:.2%} band=[{low:.1%},{high:.1%}]"
         checks.append((f"yield {code} {latest}", ok, detail))
-    # share of published commune price cells that found a rent
+    # share of published commune price cells (flats and houses, every size) that found a rent
     coverage = con.execute(
         f"""SELECT count(y.geo_code)::DOUBLE / count(*) FROM kpi_price p
             LEFT JOIN kpi_yield y USING (geo_level, geo_code, period, property_type, rooms_bucket)
             WHERE p.geo_level = 'commune' AND p.period = '{latest}' AND p.n_sales >= 10
-              -- ANIL publishes rents by rooms for apartments only
-              AND (p.property_type = 'apartment' OR (p.property_type = 'house' AND p.rooms_bucket = 'all'))"""
+              AND p.condition = 'existing' AND p.property_type IN ('apartment', 'house')"""
     ).fetchone()[0]
     checks.append(("rent coverage", coverage >= MIN_RENT_COVERAGE, f"{coverage:.1%} of commune cells"))
-    # implausible yields are not published (rents.MAX_PLAUSIBLE_YIELD); they must stay a rare exception
-    dropped = con.execute(
-        f"""SELECT count(*) FILTER (WHERE 12 * r.rent_m2 / p.median_price_m2 > {MAX_PLAUSIBLE_YIELD})::DOUBLE
-                  / count(*)
-           FROM kpi_price p JOIN rent_geo r USING (geo_level, geo_code, property_type, rooms_bucket)
-           WHERE p.year >= r.vintage AND p.n_sales >= 10"""
+    # implausible yields are published as excluded; they must stay a rare exception
+    excluded = con.execute(
+        "SELECT avg((status = 'excluded')::INTEGER) FROM kpi_yield WHERE n_sales >= 10"
     ).fetchone()[0]
-    checks.append(("implausible yields dropped", dropped <= MAX_DROPPED_YIELD_SHARE,
-                   f"{dropped:.3%} of cells (limit {MAX_DROPPED_YIELD_SHARE:.1%})"))
+    checks.append(("implausible yields excluded", excluded <= MAX_DROPPED_YIELD_SHARE,
+                   f"{excluded:.3%} of cells (limit {MAX_DROPPED_YIELD_SHARE:.1%})"))
+    # a yield is only ever paired with a price cell of the same key, never on flats + houses
+    orphans = con.execute(
+        """SELECT count(*) FROM kpi_yield y
+           LEFT JOIN kpi_price p ON p.geo_level = y.geo_level AND p.geo_code = y.geo_code
+            AND p.period = y.period AND p.property_type = y.property_type
+            AND p.rooms_bucket = y.rooms_bucket AND p.condition = 'existing'
+           WHERE p.geo_code IS NULL OR y.property_type = 'all'"""
+    ).fetchone()[0]
+    checks.append(("yields paired with their own cell", orphans == 0, f"{orphans} unpaired"))
     return checks
 
 
@@ -167,12 +188,16 @@ MIN_DPE_COVERAGE = 0.95
 
 def check_dpe(con: duckdb.DuckDBPyConnection) -> list[Check]:
     france, paris = (con.execute(
-        "SELECT share_fg FROM kpi_dpe WHERE geo_level = ? AND geo_code = ?", [level, code]
+        "SELECT share_fg FROM kpi_dpe WHERE geo_level = ? AND geo_code = ? AND property_type = 'all'", [level, code]
     ).fetchone() for level, code in (("france", "FR"), ("commune", "75056")))
+    paris_flats = con.execute(
+        "SELECT share_fg FROM kpi_dpe WHERE geo_level = 'commune' AND geo_code = '75056' AND property_type = 'apartment'"
+    ).fetchone()
     coverage = con.execute(
         """SELECT count(d.geo_code)::DOUBLE / count(*) FROM
                (SELECT DISTINCT geo_code FROM kpi_price WHERE geo_level = 'commune' AND n_sales >= 10) p
-           LEFT JOIN kpi_dpe d ON d.geo_level = 'commune' AND d.geo_code = p.geo_code"""
+           LEFT JOIN kpi_dpe d ON d.geo_level = 'commune' AND d.geo_code = p.geo_code
+                AND d.property_type = 'all'"""
     ).fetchone()[0]
     return [
         ("share F/G France", france is not None and 0.05 <= france[0] <= 0.25,
@@ -181,6 +206,8 @@ def check_dpe(con: duckdb.DuckDBPyConnection) -> list[Check]:
         ("share F/G Paris > France", france is not None and paris is not None and paris[0] > france[0],
          "missing" if paris is None else f"{paris[0]:.1%}"),
         ("dpe coverage", coverage >= MIN_DPE_COVERAGE, f"{coverage:.1%} of priced communes"),
+        ("flats DPE split present (Paris)", paris_flats is not None,
+         "missing" if paris_flats is None else f"{paris_flats[0]:.1%}"),
     ]
 
 

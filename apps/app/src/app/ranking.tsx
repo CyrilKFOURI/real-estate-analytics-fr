@@ -10,12 +10,14 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { loadRanking } from '@/data/api';
 import { formatCount, formatEurosPerM2, formatPercent, formatPeriod, formatRentPerM2, formatSignedPercent } from '@/data/format';
 import { isRisky, rankPlaces, type RankingFilter, type SortKey } from '@/data/rank';
-import type { Ranking, RankingRow } from '@/data/types';
+import { bucketsFor } from '@/data/select';
+import type { DwellingType, Ranking, RankingRow, RoomsBucket } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const SORTS: { value: SortKey; label: string }[] = [
   { value: 'score', label: 'Score de marché' },
-  { value: 'yield', label: 'Rentabilité' },
+  { value: 'yield', label: 'Rentabilité brute' },
+  { value: 'cash_flow', label: 'Cash-flow (bien type)' },
   { value: 'price', label: 'Prix le plus bas' },
   { value: 'trend', label: 'Prix en hausse' },
   { value: 'population', label: 'Population en hausse' },
@@ -36,7 +38,9 @@ const Row = ({ row, rank }: { row: RankingRow; rank: number }) => {
             {row.name} <ThemedText type="small" themeColor="textSecondary">({row.departement})</ThemedText>
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {formatEurosPerM2(row.median_price_m2)} · loyer {formatRentPerM2(row.rent_m2)} · {formatSignedPercent(row.yoy_change)} sur un an
+            {formatEurosPerM2(row.median_price_m2)} · loyer {formatRentPerM2(row.rent_m2)} charges comprises ·{' '}
+            {formatSignedPercent(row.yoy_change)} sur un an
+            {row.cash_flow_monthly != null ? ` · cash-flow bien type ${Math.round(row.cash_flow_monthly)} €/mois` : ''}
             · {formatCount(row.n_sales)} ventes
             {row.score != null ? ` · score ${Math.round(row.score)}/100` : ''}
             {row.share_fg != null ? ` · F/G ${formatPercent(row.share_fg)}` : ''}
@@ -59,10 +63,12 @@ const Row = ({ row, rank }: { row: RankingRow; rank: number }) => {
 };
 
 export default function RankingScreen() {
-  const [ranking, setRanking] = useState<Ranking | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ segment: string; ranking: Ranking } | null>(null);
+  // keyed by segment like the rows, so a failed file does not block the other segments
+  const [failure, setFailure] = useState<{ segment: string; message: string } | null>(null);
+  const [type, setType] = useState<DwellingType>('apartment');
+  const [rooms, setRooms] = useState<RoomsBucket>('all');
   const [filter, setFilter] = useState<RankingFilter>({
-    propertyType: 'apartment',
     excludeRisky: true,
     departement: '',
     maxPriceM2: null,
@@ -71,9 +77,20 @@ export default function RankingScreen() {
   const [budget, setBudget] = useState('');
 
   useEffect(() => {
-    loadRanking().then(setRanking, (e: Error) => setError(e.message));
-  }, []);
+    let current = true;
+    // one file per segment: flats and houses, and each size, are ranked apart
+    loadRanking(type, rooms).then(
+      (result) => current && setLoaded({ segment: `${type}_${rooms}`, ranking: result }),
+      (e: Error) => current && setFailure({ segment: `${type}_${rooms}`, message: e.message }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [type, rooms]);
 
+  // the previous segment's rows are not shown while the next file loads
+  const ranking = loaded?.segment === `${type}_${rooms}` ? loaded.ranking : null;
+  const error = failure?.segment === `${type}_${rooms}` ? failure.message : null;
   const rows = useMemo(
     () => (ranking ? rankPlaces(ranking.rows, { ...filter, maxPriceM2: budget ? parseNumber(budget) : null }) : []),
     [ranking, filter, budget],
@@ -91,13 +108,25 @@ export default function RankingScreen() {
           <View style={styles.header}>
             <ThemedText type="subtitle">Où investir ?</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Rentabilité brute = 12 × loyer d&apos;annonce / prix médian des ventes signées
+              Rentabilité brute = 12 × loyer d&apos;annonce (charges comprises, à la surface médiane) / prix médian des ventes signées
               {ranking ? ` en ${formatPeriod(ranking.period)}, communes avec au moins ${ranking.minSales} ventes` : ''}.
               Une rentabilité très élevée signale souvent un marché à risque.
             </ThemedText>
             <View style={styles.chips}>
-              <Chip label="Appartements" selected={filter.propertyType === 'apartment'} onPress={() => setFilter({ ...filter, propertyType: 'apartment' })} />
-              <Chip label="Maisons" selected={filter.propertyType === 'house'} onPress={() => setFilter({ ...filter, propertyType: 'house' })} />
+              <Chip label="Appartements" selected={type === 'apartment'} onPress={() => { setType('apartment'); setRooms('all'); }} />
+              <Chip label="Maisons" selected={type === 'house'} onPress={() => { setType('house'); setRooms('all'); }} />
+            </View>
+            <View style={styles.chips}>
+              {bucketsFor(type).map((bucket) => (
+                <Chip
+                  key={bucket}
+                  label={bucket === 'all' ? 'Toutes tailles' : type === 'house' ? `${bucket} pièces` : `T${bucket}`}
+                  selected={rooms === bucket}
+                  onPress={() => setRooms(bucket)}
+                />
+              ))}
+            </View>
+            <View style={styles.chips}>
               <Chip
                 label="Écarter les loyers encadrés"
                 selected={Boolean(filter.excludeRentControl)}

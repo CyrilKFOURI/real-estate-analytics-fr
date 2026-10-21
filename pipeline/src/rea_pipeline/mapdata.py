@@ -4,34 +4,29 @@ data/serve/map/
   departements.geojson         every département with its KPIs (France view)
   communes/<departement>.geojson  its communes (Paris/Lyon/Marseille as arrondissements), loaded on click
 Geometries: Etalab "contours administratifs" (communes simplified to 100 m, départements to 1 km).
-Only published KPI cells are attached (same n >= 10 rule as everywhere else).
+Values are per property type only (flats and houses are never coloured together) and only for
+cells with at least 30 sales (marts.RELIABLE_SALES): thinner places show their sales count and stay
+grey. map/breaks.json holds the quintile breaks of every metric, so the app does not compute them.
 """
 import gzip
 import json
+import statistics
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
 import httpx
 
-from . import paths
+from . import deals, paths
 from .ingest import download
+from .marts import RELIABLE_SALES
 
 CONTOURS_URL = "https://etalab-datasets.geo.data.gouv.fr/contours-administratifs/latest/geojson/{name}.geojson.gz"
 CONTOURS_DIR = paths.RAW / "contours"
 LAYERS = {"communes": "communes-100m", "departements": "departements-1000m"}
 CITY_WITH_ARRONDISSEMENTS = ("75056", "69123", "13055")
 
-# property name in the GeoJSON -> SQL expression over the KPI tables (latest complete year)
-METRICS = {
-    "price_apartment": "max(p.median_price_m2) FILTER (WHERE p.property_type = 'apartment')",
-    "price_house": "max(p.median_price_m2) FILTER (WHERE p.property_type = 'house')",
-    "price_all": "max(p.median_price_m2) FILTER (WHERE p.property_type = 'all')",
-    "trend_all": "max(p.cagr) FILTER (WHERE p.property_type = 'all')",
-    "sales_all": "max(p.n_sales) FILTER (WHERE p.property_type = 'all')",
-    "yield_apartment": "max(y.gross_yield) FILTER (WHERE y.property_type = 'apartment')",
-    "yield_house": "max(y.gross_yield) FILTER (WHERE y.property_type = 'house')",
-}
+TYPES = ("apartment", "house")
 
 
 def ingest_contours() -> dict:
@@ -50,28 +45,38 @@ def _has(con: duckdb.DuckDBPyConnection, table: str) -> bool:
 
 
 def _kpis(con: duckdb.DuckDBPyConnection, levels: tuple[str, ...], min_sales: int) -> dict[tuple[str, str], dict]:
-    """Map properties per (geo_level, geo_code) for the latest complete year."""
-    price_columns = {row[0] for row in con.execute("DESCRIBE kpi_price").fetchall()}
-    # an older kpi_price may lack newer columns (e.g. cagr): those metrics are left empty
-    metrics = ", ".join(
-        f"{expr if 'p.cagr' not in expr or 'cagr' in price_columns else 'NULL'} AS {name}"
-        for name, expr in METRICS.items()
-    )
+    """Map properties per (geo_level, geo_code) for the latest complete year, all sizes."""
     level_list = ", ".join(f"'{l}'" for l in levels)
-    rows = con.execute(
+    rates = dict(((l, c), r) for l, c, r in con.execute(
+        "SELECT geo_level, geo_code, tfpb_rate FROM kpi_local_tax").fetchall()) if _has(con, "kpi_local_tax") else {}
+    out: dict[tuple[str, str], dict] = {}
+    for level, code, ptype, n, price_m2, cagr, price, surface, gross, rent in con.execute(
         f"""
         WITH latest AS (
             SELECT max(period) AS latest_period FROM kpi_price WHERE period_type = 'year' AND NOT is_partial
         )
-        SELECT p.geo_level, p.geo_code, {metrics}
+        SELECT p.geo_level, p.geo_code, p.property_type, p.n_sales, p.median_price_m2, p.cagr,
+               p.median_price, p.median_surface_m2,
+               CASE WHEN y.status = 'ok' THEN y.gross_yield END, CASE WHEN y.status = 'ok' THEN y.rent_m2 END
         FROM kpi_price p
         JOIN latest ON p.period = latest.latest_period
-        LEFT JOIN kpi_yield y USING (geo_level, geo_code, period_type, period, property_type, rooms_bucket)
-        WHERE p.geo_level IN ({level_list}) AND p.rooms_bucket = 'all' AND p.n_sales >= {min_sales}
-        GROUP BY p.geo_level, p.geo_code
+        LEFT JOIN kpi_yield y ON y.geo_level = p.geo_level AND y.geo_code = p.geo_code
+             AND y.period_type = p.period_type AND y.period = p.period
+             AND y.property_type = p.property_type AND y.rooms_bucket = p.rooms_bucket
+        WHERE p.geo_level IN ({level_list}) AND p.rooms_bucket = 'all' AND p.condition = 'existing'
+          AND p.property_type IN {TYPES} AND p.n_sales >= {min_sales}
         """
-    ).fetchall()
-    out = {(level, code): dict(zip(METRICS, values)) for level, code, *values in rows}
+    ).fetchall():
+        props = out.setdefault((level, code), {})
+        props[f"sales_{ptype}"] = n
+        if n < RELIABLE_SALES:
+            continue  # too few sales to colour: grey on the map, count in the tooltip
+        props |= {f"price_{ptype}": price_m2, f"trend_{ptype}": cagr, f"yield_{ptype}": gross}
+        if gross is not None and price and surface:
+            rate = rates.get((level, code))
+            deal = deals.typical_deal(float(price), float(surface), float(rent), ptype,
+                                      None if rate is None else float(rate))
+            props |= {f"net_yield_{ptype}": deal["net_yield"], f"cash_flow_{ptype}": deal["cash_flow_monthly"]}
 
     def add(query: str, names: tuple[str, ...]):
         for level, code, *values in con.execute(query).fetchall():
@@ -81,16 +86,30 @@ def _kpis(con: duckdb.DuckDBPyConnection, levels: tuple[str, ...], min_sales: in
     add(f"SELECT geo_level, geo_code, vacancy_rate, population_growth_yearly FROM kpi_socio "
         f"WHERE geo_level IN ({level_list})", ("vacancy", "population_growth"))
     if _has(con, "kpi_dpe"):
-        add(f"SELECT geo_level, geo_code, share_fg FROM kpi_dpe WHERE geo_level IN ({level_list}) AND n_dpe >= 10",
-            ("share_fg",))
+        add(f"""SELECT geo_level, geo_code,
+                       max(share_fg) FILTER (WHERE property_type = 'apartment'),
+                       max(share_fg) FILTER (WHERE property_type = 'house')
+                FROM kpi_dpe WHERE geo_level IN ({level_list}) AND n_dpe >= 10 GROUP BY ALL""",
+            ("share_fg_apartment", "share_fg_house"))
     if _has(con, "kpi_score"):
         add("SELECT geo_level, geo_code, max(score) FILTER (WHERE property_type = 'apartment'), "
             "max(score) FILTER (WHERE property_type = 'house') FROM kpi_score GROUP BY ALL",
             ("score_apartment", "score_house"))
-    if _has(con, "kpi_local_tax"):
+    if rates:
         add(f"SELECT geo_level, geo_code, tfpb_rate FROM kpi_local_tax WHERE geo_level IN ({level_list})",
             ("tfpb_rate",))
     return out
+
+
+def _breaks(features: list[dict]) -> dict[str, list[float]]:
+    """Quintile breaks (20/40/60/80 %) of every numeric property present on at least 2 features."""
+    values: dict[str, list[float]] = {}
+    for feature in features:
+        for key, value in feature["properties"].items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and not key.startswith("sales_"):
+                values.setdefault(key, []).append(float(value))
+    return {key: [round(b, 5) for b in statistics.quantiles(v, n=5)] for key, v in sorted(values.items())
+            if len(v) >= 2}
 
 
 def _clean(values: dict) -> dict:
@@ -99,7 +118,7 @@ def _clean(values: dict) -> dict:
 
 def _write(path: Path, features: list[dict]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":"))
+    text = json.dumps(allow_nan=False, obj={"type": "FeatureCollection", "features": features}, ensure_ascii=False, separators=(",", ":"))
     path.write_text(text, encoding="utf-8")
     return len(text.encode("utf-8"))
 
@@ -136,6 +155,9 @@ def write_map_layer(con: duckdb.DuckDBPyConnection, serve_dir: Path, min_sales: 
     commune_bytes = [
         _write(serve_dir / "map" / "communes" / f"{dep}.geojson", features) for dep, features in by_departement.items()
     ]
+    breaks = {"departements": _breaks(departements),
+              "communes": _breaks([f for features in by_departement.values() for f in features])}
+    (serve_dir / "map" / "breaks.json").write_text(json.dumps(allow_nan=False, obj=breaks, separators=(",", ":")), encoding="utf-8")
     sizes |= {"commune_files": len(commune_bytes), "commune_max_kb": round(max(commune_bytes) / 1024),
               "departements_kb": round(sizes["departements"] / 1024)}
     return sizes

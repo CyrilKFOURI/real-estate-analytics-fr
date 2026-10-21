@@ -5,11 +5,12 @@ import L from 'leaflet';
 import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 
-import { colorOf, type MapFeature, type MapLayer, type MetricKey } from '@/data/map';
+import { colorOf, type MapFeature, type MapLayer } from '@/data/map';
 
 type ChoroplethMapProps = {
   layer: MapLayer | null;
-  metric: MetricKey;
+  /** Property key of the metric in the layer, e.g. price_apartment. */
+  metric: string;
   breaks: number[];
   onSelect: (feature: MapFeature) => void;
   height: number;

@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from rea_pipeline import clean, marts, refs
+from rea_pipeline import clean, marts, refs, validate
 
 HEADER = ["No disposition", "Date mutation", "Nature mutation", "Valeur fonciere",
           "Code departement", "Code commune", "Prefixe de section", "Section", "No plan",
@@ -63,6 +63,16 @@ ROWS = [
     # new build (VEFA): kept, flagged
     row(260000, "01001", "Appartement", 60, rooms=3, nature="Vente en l'état futur d'achèvement",
         carrez=58.4, lot="12", lots=2),
+    # two identical flats (different lots) sold together -> dropped, not one flat at double price
+    row(333333, "01001", "Appartement", 45, lot="3", plan="5"),
+    row(333333, "01001", "Appartement", 45, lot="4", plan="5"),
+    # house on a large estate -> kept for the model, out of market cells
+    row(444444, "01001", "Maison", 120, rooms=5, plan="9", culture="T", land=60000),
+    # flat sold with 3 outbuildings -> kept for the model, out of market cells
+    row(222222, "01001", "Appartement", 40, lot="20", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="21", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="22", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="23", plan="6"),
 ]
 
 
@@ -97,8 +107,30 @@ def sales(con) -> dict[int, tuple]:
 
 
 def test_kept_sales(con):
-    assert set(sales(con)) == {200000, 300000, 500000, 150000, 250000, 260000}
-    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 6
+    assert set(sales(con)) == {200000, 300000, 500000, 150000, 250000, 260000, 444444, 222222}
+    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 8
+
+
+def test_identical_flats_sold_together_are_dropped(con):
+    assert 333333 not in sales(con)
+
+
+def test_same_flat_on_two_parcels_kept(con):
+    assert 200000 in sales(con)
+
+
+def test_large_land_house_flagged(con):
+    assert _sale(con, 444444, "market_excluded") == ("large_land",)
+
+
+def test_land_cap_share_counts_every_house(con):
+    # houses of département 01: 300000, 250000 and the estate 444444: 1 of 3 is out
+    assert marts.land_cap_share(con)["01"] == pytest.approx(1 / 3, abs=1e-4)
+
+
+def test_many_outbuildings_flagged(con):
+    assert _sale(con, 222222, "market_excluded") == ("outbuildings",)
+    assert _sale(con, 200000, "market_excluded") == (None,)
 
 
 def _sale(con, price, columns):
@@ -142,24 +174,105 @@ def test_small_cells_not_published(con, tmp_path):
     assert marts.export_published(con, tmp_path / "kpi.parquet") == 0
 
 
-def _add_sales(con, year: int, half: int, price_m2: float, n: int = 12) -> None:
+def _add_sales(con, year: int, half: int, price_m2: float, n: int = 12, property_type: str = "apartment",
+               rooms: int = 2, new_build: bool = False, excluded: str | None = None) -> None:
     month = 3 if half == 1 else 9
     for i in range(n):
         con.execute(
             """INSERT INTO dvf_sales BY NAME
                SELECT ? AS id_mutation, CAST(? AS DATE) AS date_mutation, ? AS year, ? AS half,
-                      false AS is_new_build, ? AS price, 50 AS surface_m2, ? AS price_m2,
-                      'apartment' AS property_type, 2 AS rooms, '01001' AS code_commune,
-                      '01' AS code_departement, '84' AS code_region""",
-            [f"{year}-{half}-{i}", f"{year}-{month:02d}-01", year, half, price_m2 * 50, price_m2],
+                      ? AS is_new_build, ? AS price, 50 AS surface_m2, ? AS price_m2,
+                      ? AS property_type, ? AS rooms, '01001' AS code_commune,
+                      '01' AS code_departement, '84' AS code_region, ? AS market_excluded""",
+            [f"{year}-{half}-{property_type}-{rooms}-{new_build}-{excluded}-{price_m2}-{i}",
+             f"{year}-{month:02d}-01", year, half, new_build, price_m2 * 50, price_m2,
+             property_type, rooms, excluded],
         )
+
+
+def _cells(con, period: str, property_type: str, condition: str = "existing") -> dict[str, tuple]:
+    rows = con.execute(
+        """SELECT rooms_bucket, n_sales, reliability, new_premium FROM kpi_price
+           WHERE geo_level = 'commune' AND geo_code = '01001' AND period = ?
+             AND property_type = ? AND condition = ?""",
+        [period, property_type, condition],
+    ).fetchall()
+    return {r[0]: r[1:] for r in rows}
+
+
+def test_house_buckets(con):
+    for rooms in (2, 3, 4, 5, 7):
+        _add_sales(con, 2025, 1, 2000, n=10, property_type="house", rooms=rooms)
+    marts.build_price_kpis(con, "test")
+    cells = _cells(con, "2025-H1", "house")
+    assert set(cells) == {"1-3", "4", "5", "6+", "all"}
+    assert cells["1-3"][0] == 20 and cells["all"][0] == 50
+
+
+def test_unknown_rooms_out_of_all(con):
+    _add_sales(con, 2025, 1, 3000, n=12)
+    _add_sales(con, 2025, 1, 3000, n=5, rooms=0)
+    marts.build_price_kpis(con, "test")
+    cells = _cells(con, "2025-H1", "apartment")
+    assert cells["all"][0] == cells["2"][0] == 12
+
+
+def test_market_excluded_out_of_cells(con):
+    _add_sales(con, 2025, 1, 3000, n=12)
+    _add_sales(con, 2025, 1, 3000, n=3, excluded="outbuildings")
+    marts.build_price_kpis(con, "test")
+    assert _cells(con, "2025-H1", "apartment")["all"][0] == 12
+
+
+def test_new_build_cell(con):
+    _add_sales(con, 2025, 1, 3000, n=10)
+    _add_sales(con, 2025, 1, 4000, n=10, new_build=True)
+    marts.build_price_kpis(con, "test")
+    new = _cells(con, "2025-H1", "apartment", "new")
+    assert set(new) == {"all"} and new["all"][0] == 10
+    assert _cells(con, "2025-H1", "apartment")["all"][2] == pytest.approx(4000 / 3000 - 1)
+    assert _cells(con, "2025-H1", "all", "new") == {}
+
+
+def test_land_and_outbuilding_context_per_cell(con):
+    for i in range(10):
+        con.execute(
+            """INSERT INTO dvf_sales BY NAME SELECT ? AS id_mutation, DATE '2025-03-01' AS date_mutation,
+                   2025 AS year, 1 AS half, false AS is_new_build, 200000 AS price, 100 AS surface_m2,
+                   2000.0 AS price_m2, 'house' AS property_type, 4 AS rooms, '01001' AS code_commune,
+                   '01' AS code_departement, '84' AS code_region, ? AS land_m2, ? AS n_dependencies""",
+            [f"land-{i}", 500 + 100 * i, 1 if i < 4 else 0],
+        )
+    marts.build_price_kpis(con, "test")
+    land, share = con.execute(
+        """SELECT median_land_m2, share_with_outbuilding FROM kpi_price WHERE geo_level = 'commune'
+           AND geo_code = '01001' AND period = '2025-H1' AND property_type = 'house' AND rooms_bucket = '4'"""
+    ).fetchone()
+    assert land == pytest.approx(950) and share == pytest.approx(0.4)
+
+
+def test_reliability(con):
+    _add_sales(con, 2025, 1, 3000, n=12)
+    _add_sales(con, 2025, 2, 3000, n=30)
+    marts.build_price_kpis(con, "test")
+    assert _cells(con, "2025-H1", "apartment")["all"][1] == "low"
+    assert _cells(con, "2025-H2", "apartment")["all"][1] == "ok"
+
+
+def test_bucket_sums_gate(con):
+    _add_sales(con, 2025, 1, 3000, n=12)
+    _add_sales(con, 2025, 1, 3000, n=12, rooms=3)
+    marts.build_price_kpis(con, "test")
+    assert all(ok for _, ok, _ in validate.check_bucket_sums(con))
+    con.execute("DELETE FROM kpi_price WHERE rooms_bucket = '3'")
+    assert not all(ok for _, ok, _ in validate.check_bucket_sums(con))
 
 
 def _kpi(con, period: str):
     return con.execute(
         """SELECT median_price_m2, yoy_change, is_partial FROM kpi_price
            WHERE geo_level = 'commune' AND geo_code = '01001' AND period = ?
-             AND property_type = 'apartment' AND rooms_bucket = 'all'""",
+             AND property_type = 'apartment' AND rooms_bucket = 'all' AND condition = 'existing'""",
         [period],
     ).fetchone()
 
@@ -223,6 +336,17 @@ def test_price_bands_share_sums_to_one(con):
     ).fetchall())
     assert shares["0-100k"] == pytest.approx(0.5) and shares["200-300k"] == pytest.approx(0.5)
     assert shares["500k+"] == 0 and sum(shares.values()) == pytest.approx(1)
+
+
+def test_bands_every_year_no_type_all(con):
+    _add_sales(con, 2024, 1, 3000)
+    _add_sales(con, 2025, 1, 3000)
+    marts.build_price_band_kpis(con)
+    keys = set(con.execute(
+        "SELECT DISTINCT year, property_type FROM kpi_price_bands WHERE geo_level = 'commune' AND geo_code = '01001'"
+    ).fetchall())
+    assert {(2024, "apartment"), (2025, "apartment")} <= keys
+    assert not any(t == "all" for _, t in keys)
 
 
 def test_rent_control_resolves_names_and_arrondissements(con, tmp_path):

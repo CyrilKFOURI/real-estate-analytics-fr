@@ -70,3 +70,47 @@ def test_flags(con):
 
 def test_secret_value_is_null(con):
     assert kpi(con, "commune", "01001", "median_living_standard") is None
+
+
+def test_rental_homes(con):
+    # main homes 50 000 − owner homes 20 000
+    assert kpi(con, "commune", "49007", "rental_homes") == 30000
+
+
+STOCK_HEADER = ("CODGEO;P22_LOG;P22_RP;P22_MAISON;P22_APPART;P22_RP_1P;P22_RP_2P;P22_RP_3P;P22_RP_4P;P22_RP_5PP;"
+                "P22_RPMAISON;P22_NBPI_RPMAISON;P22_RPAPPART;P22_NBPI_RPAPPART;"
+                "P22_RPMAISON_ACH1919;P22_RPMAISON_ACH1945;P22_RPMAISON_ACH1970;P22_RPMAISON_ACH1990;"
+                "P22_RPMAISON_ACH2005;P22_RPMAISON_ACH2019;"
+                "P22_RPAPPART_ACH1919;P22_RPAPPART_ACH1945;P22_RPAPPART_ACH1970;P22_RPAPPART_ACH1990;"
+                "P22_RPAPPART_ACH2005;P22_RPAPPART_ACH2019;P22_RP_LOC;P22_RP_LOCHLMV")
+
+
+def test_stock_by_type(tmp_path):
+    csv = tmp_path / "logement.csv"
+    csv.write_text("\n".join([
+        STOCK_HEADER,
+        # 1000 homes: 200 houses, 800 flats; flats 2.5 rooms on average; 40 % of flats built before 1946
+        "49007;1000;900;200;800;100;200;300;200;100;180;900;720;1800;"
+        "10;10;40;40;50;30;200;88;100;100;100;132;500;100",
+        "49002;100;90;80;20;0;10;20;30;30;72;360;18;54;0;0;10;10;20;32;0;0;0;0;10;8;30;0",
+    ]), encoding="utf-8")
+    connection = duckdb.connect()
+    connection.execute(
+        """CREATE TABLE commune_map AS SELECT * FROM (VALUES
+               ('49007', '49007', NULL, '49', '52'), ('49002', '49002', NULL, '49', '52'))
+           t(code, code_commune, code_arrondissement, departement, region)"""
+    )
+    insee.build_stock_kpis(connection, csv)
+
+    def stock(level, code, column):
+        return connection.execute(
+            f"SELECT {column} FROM kpi_stock WHERE geo_level = ? AND geo_code = ?", [level, code]
+        ).fetchone()[0]
+
+    assert stock("commune", "49007", "share_houses") == pytest.approx(0.2)
+    assert stock("commune", "49007", "avg_rooms_apartment") == pytest.approx(2.5)
+    assert stock("commune", "49007", "apartments_before_1946_share") == pytest.approx(288 / 720)
+    assert stock("commune", "49007", "tenant_share") == pytest.approx(500 / 900)
+    assert stock("commune", "49007", "main_homes_5p_share") == pytest.approx(100 / 900)
+    # départements add their communes up
+    assert stock("departement", "49", "share_houses") == pytest.approx(280 / 1100)
