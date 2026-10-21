@@ -23,8 +23,12 @@ def nat(obs, year, agglo, zone="", habitat="", period="", tenancy="", rooms="", 
 ROWS_2025 = [
     nat("B3500", 2025, "Agglomération de Rennes", n="17534"),
     nat("B3500", 2025, "Agglomération de Rennes", rooms="Appart 2P", median="13,5", n="4000"),
+    # the same cell repeated with the habitat column filled in
+    nat("B3500", 2025, "Agglomération de Rennes", habitat="Appartement", rooms="Appart 2P", median="13,5", n="4000"),
     nat("B3500", 2025, "Agglomération de Rennes", rooms="Maison 1-3P", median="9,6", n="106"),
     nat("B3500", 2025, "Agglomération de Rennes", rooms="Ensemble 4P+", median="9,9", n="2210"),
+    # older files spell the open bucket "4P et plus"
+    nat("B3500", 2025, "Agglomération de Rennes", rooms="Appart 4P et plus", median="9,2", n="900"),
     nat("B3500", 2025, "Agglomération de Rennes", habitat="Appartement", period="1. Avant 1946", median="14,0"),
     nat("B3500", 2025, "Agglomération de Rennes", habitat="Appartement", tenancy="1. Moins de 1 an", median="14,8"),
     # centre / outskirts split: not used (agglomeration-wide figures only)
@@ -79,11 +83,20 @@ def test_fingerprint_matching(tmp_path):
         "Agglomération de Rennes": "L3500", "Agglomération de Vitré": "L3501"}
 
 
+def test_one_row_per_cell(con):
+    dupes = con.execute(
+        """SELECT count(*) FROM (SELECT agglo_code, year, property_type, rooms, period_built, tenancy
+           FROM kpi_rent_oll GROUP BY ALL HAVING count(*) > 1)"""
+    ).fetchone()[0]
+    assert dupes == 0
+
+
 def test_dimensions_parsed(con):
     assert _rent(con, "L3500") == (12.0, 17534)
     assert _rent(con, "L3500", ptype="apartment", rooms="2")[0] == 13.5
     assert _rent(con, "L3500", ptype="house", rooms="1-3")[0] == 9.6
     assert _rent(con, "L3500", rooms="4+")[0] == 9.9
+    assert _rent(con, "L3500", ptype="apartment", rooms="4+")[0] == 9.2
     assert _rent(con, "L3500", ptype="apartment", period="<1946")[0] == 14.0
     assert _rent(con, "L3500", ptype="apartment", tenancy="new")[0] == 14.8
 

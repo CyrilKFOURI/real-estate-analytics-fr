@@ -118,3 +118,19 @@
   .cy-grid > .cy-panel { grid-column: 1 / -1 !important; }
   .cy-filter { flex: 1 1 45%; }
 }
+
+/* place search: input with a flat result list docked under it */
+.cy-search { position: relative; min-width: 220px; }
+.cy-search-list { position: absolute; z-index: 30; top: 100%; left: 0; right: 0; margin: 0; padding: 0; list-style: none;
+  background: var(--surface); border: 1px solid var(--line-strong); border-top: 0; max-height: 280px; overflow: auto; }
+.cy-search-list button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 5px 8px; border: 0;
+  border-bottom: 1px solid var(--line); background: none; color: var(--ink-1); font: inherit; font-size: var(--fs-small); text-align: left; cursor: pointer; }
+.cy-search-list button:hover, .cy-search-list button:focus-visible { background: var(--surface-2); outline: none; }
+
+/* chips: selected places in a comparison, flat with a colour key */
+.cy-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cy-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 8px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius); background: var(--surface); font-size: var(--fs-small); }
+.cy-chip i { width: 10px; height: 3px; display: inline-block; }
+.cy-chip button { border: 0; background: none; color: var(--ink-3); cursor: pointer; font: inherit; padding: 0 4px; }
+.cy-chip button:hover { color: var(--neg); }

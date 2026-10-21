@@ -4,7 +4,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import { catalogueEntry } from '../../data/catalogue';
 
 type PanelProps = {
-  title: ReactNode;
+  /** Omitted for a header-less strip (KPI ribbon). */
+  title?: ReactNode;
   info?: string;
   tools?: ReactNode;
   /** Columns of the 12-column grid this panel spans. */
@@ -17,13 +18,15 @@ type PanelProps = {
 
 export const Panel = ({ title, info, tools, span = 12, flush, style, id, children }: PanelProps) => (
   <section className="cy-panel" style={{ gridColumn: `span ${span}`, ...style }} id={id}>
-    <header className="cy-panel-head">
-      <h2 className="cy-panel-title" style={{ margin: 0 }}>
-        {title}
-        {info && <InfoTip k={info} />}
-      </h2>
-      {tools && <div className="cy-panel-tools">{tools}</div>}
-    </header>
+    {(title != null || tools) && (
+      <header className="cy-panel-head">
+        <h2 className="cy-panel-title" style={{ margin: 0 }}>
+          {title}
+          {info && <InfoTip k={info} />}
+        </h2>
+        {tools && <div className="cy-panel-tools">{tools}</div>}
+      </header>
+    )}
     <div className={flush ? 'cy-panel-body flush' : 'cy-panel-body'}>{children}</div>
   </section>
 );
