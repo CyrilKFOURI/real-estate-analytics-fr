@@ -150,3 +150,8 @@
 .cy-dpe span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-micro); font-weight: 600; min-width: 0; }
 .cy-score { padding: 4px 0 8px; }
 .cy-score b { font-size: 28px; font-weight: 600; }
+
+/* number input with its unit; plain lists */
+.cy-unit { display: inline-flex; align-items: center; gap: 4px; }
+.cy-unit .cy-input { width: 90px; text-align: right; }
+.cy-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
