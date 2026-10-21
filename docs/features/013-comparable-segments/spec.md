@@ -18,13 +18,15 @@ sample size and how it was obtained, and is paired only with values of the same 
 - Unknown rooms excluded from every size cell including "all sizes".
 
 ### 2.2 Segments and thresholds (marts.py)
-- Size buckets: apartments `1, 2, 3, 4, 5+`; houses `≤3, 4, 5, 6+`; `all` per type.
+- Size buckets (column `rooms_bucket`, name kept): apartments `1, 2, 3, 4, 5+`; houses `1-3, 4, 5, 6+`;
+  `all` per type.
 - New builds (VEFA) get their own cells (`condition = new`), price KPIs only, published where n ≥ 10, with
   `new_premium` = median €/m² new / existing − 1 when both exist.
 - Trim P1–P99 per (département × type × size × year).
 - One threshold set: publish n ≥ 10; `reliability = "low"` for 10–29; ranking, score and map colours n ≥ 30.
-- Every value carries `n` and `basis` (`exact` / `all_sizes` / `parent_area`). Town pages publish `exact` and
-  `all_sizes` only; `parent_area` is used by the property check and simulator prefill only.
+- Every price/yield row carries `n_sales` and `reliability`; derived blocks that pick a cell (`latest`,
+  `typical_deal`, property check) carry `basis` (`exact` / `all_sizes` / `parent_area`). Town pages use
+  `exact` and `all_sizes` only; `parent_area` is used by the property check and simulator prefill only.
 - Price bands per area × type × year (every year), trimmed like €/m²; type `all` dropped from bands.
 
 ### 2.3 Rents and yields (rents.py)
@@ -33,12 +35,13 @@ sample size and how it was obtained, and is paired only with values of the same 
   slope applied to the 92 m² house reference, `rent_method = "house_approx"`.
 - Fields per yield cell: `rent_m2`, `rent_low_m2`, `rent_high_m2` (prediction interval scaled the same way),
   `rent_surface_m2`, `rent_method` (`surface_adjusted` / `house_approx`), `rent_level` (commune / EPCI /
-  maille, from TYPPRED), `rent_caution` (ANIL rule: nbobs_com < 30 or R² < 0.5), `gross_yield_cc`
-  (charges included, renamed), `price_to_rent_years`.
+  maille, from TYPPRED), `rent_caution` (ANIL rule: nbobs_com < 30 or R² < 0.5), `gross_yield`
+  (column name `gross_yield` kept, labelled "charges comprises" everywhere), `price_to_rent_years`.
 - Yield only on the exact same cell; none for type `all`; house yields per size.
 - Implausible cells kept with `status = "excluded"` and `reason`, value null (P10).
-- Higher levels: rents weighted by rental main residences (INSEE `P22_RP_LOC`) of communes that have a rent;
-  the paired price is the median over the same communes.
+- Higher levels: rents weighted by rental main residences (INSEE main homes − owner homes) of communes that
+  have a rent, with `rent_coverage` = share of the level's rental homes covered (ANIL covers almost every
+  commune, so the price median over all communes stays the pair).
 
 ### 2.4 OLL (new source, rents.py + ingest)
 - Download `Base_OP_{YYYY}_Nationale.csv` 2014–2025 (cp1252, `;`, decimal comma, ≈1.4 MB each); validate
@@ -73,7 +76,7 @@ sample size and how it was obtained, and is paired only with values of the same 
 
 ### 2.8 Published JSON (contract change)
 - `prices`/`yields` rows gain `condition`, `basis`, `reliability`, and the new rent fields; `rooms_bucket`
-  becomes `size` with the new house buckets. `index.json`, `ranking.json` and map layers are rebuilt with
+  keeps its name with the new house buckets. `index.json`, `ranking.json` and map layers are rebuilt with
   type-specific values only (no `price_all` colour scale). A `schema_version` field is added; the app checks
   it and shows "données en cours de mise à jour" on mismatch.
 - Size target: a commune file stays < 40 KB (today max 26 KB).
