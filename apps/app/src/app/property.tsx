@@ -34,8 +34,9 @@ import {
   formatRentPerM2,
   formatSignedPercent,
 } from '@/data/format';
-import { latestFullYear, type Segment, yieldFor } from '@/data/select';
-import type { GeoLevel, Place, RoomsBucket } from '@/data/types';
+import { chargesProvisionM2 } from '@/core-kpi/typical-deal';
+import { latestFullYear, roomsBucketOf, type Segment, yieldFor } from '@/data/select';
+import type { GeoLevel, Place } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const ENERGY_CLASSES: EnergyClass[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
@@ -69,9 +70,6 @@ type Analysis = { estimate: Estimate; place: Place | null; form: Form };
 
 // Paris, Lyon and Marseille: the address resolves to an arrondissement code.
 const levelOf = (code: string): GeoLevel => (/^(751|6938|132[01])/.test(code) ? 'arrondissement' : 'commune');
-
-const roomsBucket = (rooms: number): RoomsBucket =>
-  rooms >= 5 ? '5+' : rooms >= 1 ? (String(Math.round(rooms)) as RoomsBucket) : 'all';
 
 const Block = ({ title, source, children }: { title: string; source: string; children: React.ReactNode }) => (
   <View style={styles.block}>
@@ -142,13 +140,18 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
   const surface = parseNumber(form.surface);
   const rooms = parseNumber(form.rooms);
   const asked = parseNumber(form.askedPrice);
-  const segment: Segment = {
-    propertyType: form.propertyType,
-    rooms: form.propertyType === 'house' ? 'all' : roomsBucket(rooms),
-  };
-  const year = place ? latestFullYear(place.prices, segment) : undefined;
+  // the property's own cell (type × size); a thin size falls back to all sizes, labelled
+  const exact: Segment = { propertyType: form.propertyType, rooms: roomsBucketOf(form.propertyType, rooms) };
+  const whole: Segment = { propertyType: form.propertyType, rooms: 'all' };
+  const exactYear = place ? latestFullYear(place.prices, exact) : undefined;
+  const segment = exactYear ? exact : whole;
+  const year = exactYear ?? (place ? latestFullYear(place.prices, whole) : undefined);
   const rent = place && year ? yieldFor(place.yields, segment, year.period) : undefined;
-  const rentMonthly = rent ? Math.round((rent.rent_m2 * surface) / 10) * 10 : 0;
+  const rentBasis = segment === exact ? '' : ' · toutes tailles (trop peu de ventes de cette taille)';
+  // ANIL rents include charges; the money block works on the rent excluding them (D18)
+  const rentMonthly = rent
+    ? Math.round((Math.max(rent.rent_m2 - chargesProvisionM2(form.propertyType), 0) * surface) / 10) * 10
+    : 0;
   const deal = analyzeDeal(
     {
       price: asked,
@@ -286,10 +289,12 @@ const AnalysisView = ({ analysis }: { analysis: Analysis }) => {
         {rent ? (
           <View style={styles.tiles}>
             <KpiTile
-              label="Loyer estimé"
+              label="Loyer estimé hors charges"
               value={`${formatEuros(rentMonthly)} / mois`}
-              detail={`${formatRentPerM2(rent.rent_m2)} (${formatRentPerM2(rent.rent_low_m2)} – ${formatRentPerM2(rent.rent_high_m2)})${
-                rent.rent_source === 'maille' ? ' · estimé sur les communes voisines' : ''
+              detail={`Annonces ${formatRentPerM2(rent.rent_m2)} charges comprises (${formatRentPerM2(rent.rent_low_m2)} – ${formatRentPerM2(
+                rent.rent_high_m2,
+              )}) moins ${formatRentPerM2(chargesProvisionM2(form.propertyType))} de charges${rentBasis}${
+                rent.rent_level === 'maille' || rent.rent_level === 'epci' ? ' · estimé sur des communes voisines' : ''
               }`}
             />
             <KpiTile

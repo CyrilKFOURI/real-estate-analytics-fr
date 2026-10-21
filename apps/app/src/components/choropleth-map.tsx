@@ -2,11 +2,12 @@
 import { View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import type { MapFeature, MapLayer, MetricKey } from '@/data/map';
+import type { MapFeature, MapLayer } from '@/data/map';
 
 type ChoroplethMapProps = {
   layer: MapLayer | null;
-  metric: MetricKey;
+  /** Property key of the metric in the layer, e.g. price_apartment. */
+  metric: string;
   breaks: number[];
   onSelect: (feature: MapFeature) => void;
   height: number;

@@ -31,8 +31,10 @@ import {
   LOW_CONFIDENCE_SALES,
   type Segment,
   yieldFor,
+  newBuildFor,
+  EXCLUSION_REASONS,
 } from '@/data/select';
-import type { GeoLevel, Place } from '@/data/types';
+import type { GeoLevel, Place, YieldRow } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const LEVEL_LABELS: Record<GeoLevel, string> = {
@@ -45,6 +47,13 @@ const LEVEL_LABELS: Record<GeoLevel, string> = {
 
 const signColor = (value: number | null | undefined) =>
   value == null || value === 0 ? undefined : value > 0 ? 'positive' : 'negative';
+
+const RENT_LEVEL_NOTES: Record<YieldRow['rent_level'], string> = {
+  commune: '',
+  epci: " · estimé sur l'intercommunalité",
+  maille: ' · estimé sur des communes voisines comparables',
+  aggregate: ' · moyenne des communes',
+};
 
 export default function PlaceScreen() {
   const theme = useTheme();
@@ -92,7 +101,11 @@ export default function PlaceScreen() {
   const rent = year ? yieldFor(place.yields, segment, year.period) : undefined;
   const socio = place.socio;
   const score = segment.propertyType === 'all' ? undefined : place.score?.[segment.propertyType];
-  const bands = place.price_bands?.[segment.propertyType];
+  const bands =
+    year && segment.propertyType !== 'all' ? place.price_bands?.[year.period]?.[segment.propertyType] : undefined;
+  // a house is compared with houses: the type's own energy labels when published
+  const energy = place.energy?.[segment.propertyType] ?? place.energy?.all;
+  const newBuild = year ? newBuildFor(place.prices, segment, year.period) : undefined;
   const title = place.name ?? code;
 
   return (
@@ -161,19 +174,34 @@ export default function PlaceScreen() {
                 value={formatRentPerM2(rent?.rent_m2)}
                 detail={
                   rent
-                    ? `${formatRentPerM2(rent.rent_low_m2)} – ${formatRentPerM2(rent.rent_high_m2)}${
-                        rent.rent_source === 'maille' ? ' · estimé sur les communes voisines' : ''
-                      }`
+                    ? `${formatRentPerM2(rent.rent_low_m2)} – ${formatRentPerM2(rent.rent_high_m2)} · lu à ${Math.round(
+                        rent.rent_surface_m2,
+                      )} m²${RENT_LEVEL_NOTES[rent.rent_level]}${
+                        rent.rent_method === 'house_approx' ? ' · approximation maison' : ''
+                      }${rent.rent_caution ? ' · à interpréter avec prudence (ANIL)' : ''}`
                     : segment.propertyType === 'all'
                       ? 'Choisissez appartement ou maison'
-                      : 'Pas de loyer publié'
+                      : 'Pas de loyer publié pour cette taille'
                 }
               />
               <KpiTile
-                label="Rentabilité brute"
-                value={formatPercent(rent?.gross_yield)}
-                detail={rent ? `${formatDecimal(rent.price_to_rent_years)} années de loyer pour le prix` : undefined}
+                label="Rentabilité brute (charges comprises)"
+                value={rent?.status === 'excluded' ? 'Exclue' : formatPercent(rent?.gross_yield)}
+                detail={
+                  rent?.status === 'excluded' && rent.reason
+                    ? `Valeur exclue : ${EXCLUSION_REASONS[rent.reason]}`
+                    : rent?.price_to_rent_years != null
+                      ? `${formatDecimal(rent.price_to_rent_years)} années de loyer pour le prix`
+                      : undefined
+                }
               />
+              {newBuild && year.new_premium != null && (
+                <KpiTile
+                  label="Prix du neuf (VEFA)"
+                  value={formatEurosPerM2(newBuild.median_price_m2)}
+                  detail={`${formatSignedPercent(year.new_premium)} par rapport à l'ancien · ${formatCount(newBuild.n_sales)} ventes`}
+                />
+              )}
             </View>
           </>
         ) : (
@@ -214,7 +242,7 @@ export default function PlaceScreen() {
         {bands && (
           <View style={styles.section}>
             <ThemedText type="smallBold">
-              Ventes par prix total en {place.price_bands?.year} ({formatCount(bands.n_sales)} ventes)
+              Ventes par prix total en {year?.period} ({formatCount(bands.n_sales)} ventes)
             </ThemedText>
             <PriceBandBars bands={bands.bands} />
           </View>
@@ -257,24 +285,28 @@ export default function PlaceScreen() {
           </View>
         )}
 
-        {(place.energy || place.local_tax) && (
+        {(energy || place.local_tax) && (
           <View style={styles.section}>
             <ThemedText type="smallBold">Énergie et fiscalité locale</ThemedText>
-            {place.energy && (
+            {energy && (
               <>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Étiquettes DPE des {formatCount(place.energy.n_dpe)} diagnostics réalisés depuis 2021 (surtout des
-                  logements vendus ou loués). G : location interdite depuis 2025, F à partir de 2028.
+                  Étiquettes DPE des {formatCount(energy.n_dpe)} diagnostics
+                  {place.energy?.[segment.propertyType] && segment.propertyType !== 'all'
+                    ? segment.propertyType === 'house' ? ' de maisons' : " d'appartements"
+                    : ''}{' '}
+                  réalisés depuis 2021 (surtout des logements vendus ou loués). G : location interdite depuis 2025,
+                  F à partir de 2028.
                 </ThemedText>
-                <EnergyBar energy={place.energy} />
+                <EnergyBar energy={energy} />
               </>
             )}
             <View style={styles.tiles}>
-              {place.energy && (
+              {energy && (
                 <KpiTile
                   label="Passoires énergétiques F/G"
-                  value={formatPercent(place.energy.share_fg)}
-                  detailColor={place.energy.share_fg > 0.15 ? 'negative' : undefined}
+                  value={formatPercent(energy.share_fg)}
+                  detailColor={energy.share_fg > 0.15 ? 'negative' : undefined}
                   detail="Part des diagnostics classés F ou G"
                 />
               )}
@@ -287,7 +319,7 @@ export default function PlaceScreen() {
               )}
               {score?.rent_to_income != null && (
                 <KpiTile
-                  label="Poids du loyer d'un T2 de 45 m²"
+                  label={segment.propertyType === 'house' ? "Poids du loyer d'une maison de 90 m²" : "Poids du loyer d'un T2 de 45 m²"}
                   value={formatPercent(score.rent_to_income)}
                   detailColor={score.rent_to_income > 0.33 ? 'negative' : undefined}
                   detail="Loyer annuel / niveau de vie médian (règle : un tiers au plus)"

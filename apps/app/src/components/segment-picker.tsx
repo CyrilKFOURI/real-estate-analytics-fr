@@ -2,23 +2,19 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import type { Segment } from '@/data/select';
+import { bucketsFor, type Segment } from '@/data/select';
 import type { PropertyType, RoomsBucket } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 
 const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: 'apartment', label: 'Appartement' },
   { value: 'house', label: 'Maison' },
-  { value: 'all', label: 'Tous biens' },
+  // flats and houses mixed: an overview of the market, never compared
+  { value: 'all', label: 'Vue d’ensemble (mélange)' },
 ];
-const ROOMS: { value: RoomsBucket; label: string }[] = [
-  { value: 'all', label: 'Toutes pièces' },
-  { value: '1', label: 'T1' },
-  { value: '2', label: 'T2' },
-  { value: '3', label: 'T3' },
-  { value: '4', label: 'T4' },
-  { value: '5+', label: 'T5+' },
-];
+
+const sizeLabel = (type: PropertyType, bucket: RoomsBucket): string =>
+  bucket === 'all' ? 'Toutes tailles' : type === 'house' ? `${bucket} pièces` : `T${bucket}`;
 
 type ChipProps = { label: string; selected: boolean; onPress: () => void };
 
@@ -51,19 +47,19 @@ export const SegmentPicker = ({ segment, onChange }: SegmentPickerProps) => (
           key={value}
           label={label}
           selected={segment.propertyType === value}
-          // the 'all' property type only exists with all rooms
-          onPress={() => onChange({ propertyType: value, rooms: value === 'all' ? 'all' : segment.rooms })}
+          // size buckets differ between flats and houses: a new type starts at all sizes
+          onPress={() => onChange({ propertyType: value, rooms: 'all' })}
         />
       ))}
     </View>
     {segment.propertyType !== 'all' && (
       <View style={styles.row}>
-        {ROOMS.map(({ value, label }) => (
+        {bucketsFor(segment.propertyType).map((bucket) => (
           <Chip
-            key={value}
-            label={label}
-            selected={segment.rooms === value}
-            onPress={() => onChange({ ...segment, rooms: value })}
+            key={bucket}
+            label={sizeLabel(segment.propertyType, bucket)}
+            selected={segment.rooms === bucket}
+            onPress={() => onChange({ ...segment, rooms: bucket })}
           />
         ))}
       </View>
