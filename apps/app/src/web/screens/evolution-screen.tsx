@@ -163,7 +163,7 @@ export default function EvolutionScreen({ filters, params, onFilters, onParams, 
                     ? [
                         { name: 'P25', type: 'line', stack: 'band', symbol: 'none', lineStyle: { opacity: 0 },
                           data: periods.map((p) => valueAt(single.points, p)?.p25 ?? null), tooltip: { show: false } },
-                        { name: 'P25 – P75', type: 'line', stack: 'band', symbol: 'none', lineStyle: { opacity: 0 },
+                        { name: 'P25 – P75', tooltip: { show: false }, type: 'line', stack: 'band', symbol: 'none', lineStyle: { opacity: 0 },
                           areaStyle: { color: css('--accent'), opacity: 0.12 },
                           data: periods.map((p) => {
                             const v = valueAt(single.points, p);

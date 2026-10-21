@@ -160,3 +160,20 @@
 .cy-compare th i { display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; }
 .cy-compare .cy-group td { background: var(--surface-2); color: var(--ink-3); font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; }
 .cy-compare td.cy-best { color: var(--ink-1); font-weight: 600; text-decoration: underline; text-decoration-color: var(--pos); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+/* simulator: stacked labelled inputs; tab buttons share the anchor strip */
+.cy-sim-form { padding: 10px 14px; display: grid; gap: 10px; }
+.cy-sim-form fieldset { border: 0; border-top: 1px solid var(--line); margin: 0; padding: 8px 0 0; display: grid; gap: 6px; }
+.cy-sim-form legend { padding: 0 6px 0 0; font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.cy-sim-form label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: var(--fs-small); color: var(--ink-2); }
+.cy-anchors button { padding: 7px 14px; border: 0; border-right: 1px solid var(--line); background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-small); cursor: pointer; }
+.cy-anchors button.active { color: var(--ink-1); box-shadow: inset 0 -2px 0 var(--ink-1); }
+.cy-anchors button:hover { background: var(--surface-2); }
+.cy-sim-form .cy-unit .cy-input { width: 104px; }
+
+/* home: four entry paths in one docked strip */
+.cy-paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); border: 1px solid var(--line); }
+.cy-paths a { display: grid; gap: 4px; padding: 12px 14px; border-right: 1px solid var(--line); margin-right: -1px; }
+.cy-paths a:hover { background: var(--surface-2); }
+.cy-paths b { color: var(--ink-1); font-weight: 600; }
+.cy-paths span { color: var(--ink-2); font-size: var(--fs-small); }

@@ -24,6 +24,12 @@ export type ChartOption = echarts.EChartsCoreOption;
 /** Categorical colours: graphite first, then muted hues; enough for 6 compared places. */
 export const SERIES_COLORS = ['#2c4a6b', '#b0602f', '#3d7a5a', '#7a4f8c', '#8a7a2a', '#4f8a9a'];
 
+const frNumber = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+const frDecimal = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
+/** French number formatting for axes and tooltips (1 234 not 1,234; decimals only under 100). */
+export const frFormat = (value: unknown): string =>
+  typeof value === 'number' ? (Math.abs(value) >= 100 ? frNumber : frDecimal).format(value) : String(value ?? '—');
+
 export const css = (name: string): string =>
   typeof document === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -39,6 +45,7 @@ export const baseOption = (): ChartOption => ({
     borderWidth: 1,
     textStyle: { color: css('--ink-1'), fontSize: 12 },
     extraCssText: 'border-radius:3px;box-shadow:none;',
+    valueFormatter: frFormat,
   },
   legend: { top: 0, right: 8, icon: 'rect', itemWidth: 10, itemHeight: 2, textStyle: { color: css('--ink-2') } },
 });
@@ -46,7 +53,7 @@ export const baseOption = (): ChartOption => ({
 export const axisStyle = () => ({
   axisLine: { lineStyle: { color: css('--line-strong') } },
   axisTick: { show: false },
-  axisLabel: { color: css('--ink-3'), fontSize: 11 },
+  axisLabel: { color: css('--ink-3'), fontSize: 11, formatter: (v: unknown) => (typeof v === 'number' ? frFormat(v) : String(v)) },
   splitLine: { lineStyle: { color: css('--line') } },
 });
 

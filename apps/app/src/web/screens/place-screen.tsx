@@ -374,7 +374,7 @@ const PlaceDashboard = ({
                     tooltip: { show: false },
                   },
                   {
-                    name: 'P25 – P75',
+                    name: 'P25 – P75', tooltip: { show: false },
                     type: 'line',
                     stack: 'b',
                     symbol: 'none',

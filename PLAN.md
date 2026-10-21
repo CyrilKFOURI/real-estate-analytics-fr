@@ -16,6 +16,6 @@
 - [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
 - [x] 012 Property analysis dashboard: verdict + price + rent + money + risks + area for one property (design: docs/features/012-property-dashboard/spec.md; needs 004 and 011)
 - [x] 013 Comparable segments: like-for-like cells (type × size × new/existing × period), surface-adjusted rents, exact-cell yields, OLL, typed DPE/INSEE/score, frontend precomputes (design: docs/features/013-comparable-segments/spec.md, study: docs/research/segmentation_study.md)
-- [ ] 014 Web dashboard: design system, shell, town page, MapLibre map, property page, ranking + compare, simulator, method page (design: docs/features/014-web-dashboard/spec.md; needs 013)
+- [x] 014 Web dashboard: design system, shell, town page, MapLibre map, property page, ranking + compare, simulator, method page (design: docs/features/014-web-dashboard/spec.md; needs 013)
 
 Priority after 004: 011 prerequisites (coordinates) → 011 → 012; 005–010 fit around them.
