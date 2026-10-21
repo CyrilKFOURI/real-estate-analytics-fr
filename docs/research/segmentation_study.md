@@ -153,17 +153,17 @@ Each published value carries `basis` (`exact` / `all_sizes` / `parent_area`) and
 5. Prices (signed, past) and rents (asking, current) are never called by the same time word: "ventes 2025",
    "loyers d'annonce T3 2025".
 
-## 8. Decisions needed
+## 8. Decisions (taken 2026-10-21)
 
-1. **Charges provision** for the simulator prefill (ANIL rent → rent excluding charges): a flat 10 %, a
-   €/m²/month by type, or no prefill (user types it)?
-2. **House size buckets** ≤3 / 4 / 5 / 6+ instead of 2 / 3 / 4 / 5+?
-3. **Add OLL and the Paris/Lyon reference rents** as new sources (small downloads, ≈15 MB in all)?
+1. **Charges provision:** a €/m²/month by type (apartment / house), shown and editable in the simulator,
+   value and source recorded in KPI_SPEC.
+2. **House size buckets:** ≤3 / 4 / 5 / 6+ rooms.
+3. **New sources:** OLL yes. Paris/Lyon reference rents: not now.
 
 ## 9. Order of work
 
 1. Cleaning and thresholds (4.2, 4.3) + `basis`/`n` on every value — pipeline tests, gate V3 on yields.
 2. Rents at matched surface and exact-cell yields (§5) — compare old vs new yields on 20 known towns.
 3. Typed DPE, INSEE stock by type, typed score (§6).
-4. New sources OLL and rent control (if accepted).
+4. New source OLL.
 5. Then the frontend spec builds on the published segments (§7).
