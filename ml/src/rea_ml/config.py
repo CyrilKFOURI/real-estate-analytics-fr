@@ -60,7 +60,7 @@ class Training:
             "verbose": -1,
         }
     )
-    max_rounds: int = 3_000
+    max_rounds: int = 8_000  # 3 000 was hit by the first run (best iteration 2 998): early stopping decides
     early_stopping_rounds: int = 100
     # feature selection compares groups: a 1 M-sale subsample of the training period is enough
     selection_train_sample: int = 1_000_000

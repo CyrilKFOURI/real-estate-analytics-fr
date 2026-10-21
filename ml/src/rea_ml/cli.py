@@ -25,7 +25,7 @@ def main() -> None:
 
         config = Config()
         result = train(config)
-        version = datetime.now(timezone.utc).strftime("%Y%m%d")
+        version = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")  # never overwrite a model in use
         folder = write_package(result, config, MODELS_DIR / MODEL_NAME / version)
         print(json.dumps(result.report["test"], indent=2))
         print(f"Model package written to {folder} (not published)")
