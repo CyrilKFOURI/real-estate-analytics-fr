@@ -27,3 +27,8 @@ Rule followed: code → tests → real-data checks (pipeline gates) → browser 
 - "Zones tendues" (1 434 communes): no open-data list, only the decree.
 - Mobile build (009): needs hosting for the data/model and a native map library.
 - Design pass: postponed on purpose (you asked to focus on features).
+
+## Price model finished (02:02)
+- Package: `data/models/rea-price-check-fr/20261021/` (not published).
+- Out-of-time test (801 k sales, 2025-H2 → 2026-H1): median abs. error **16.0 %**, 59 % within ±20 %, bias −1.5 %, P10–P90 coverage **79.8 %** (target 80 %) — see `metrics.json` for baselines and segments.
+- Next: `cd ml && uv run rea-ml serve`, then test "Analyser un bien" on a real address; raise `max_rounds` (best iteration hit the 3 000 cap).
