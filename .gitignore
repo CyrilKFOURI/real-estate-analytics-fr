@@ -13,3 +13,4 @@ data/
 
 # web export (npx expo export)
 apps/app/dist/
+.superpowers/

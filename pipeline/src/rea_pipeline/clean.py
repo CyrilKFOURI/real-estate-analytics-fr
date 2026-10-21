@@ -13,6 +13,10 @@ DWELLING_TYPES = ("Appartement", "Maison")
 SALE_NATURES = {"Vente": False, "Vente en l'état futur d'achèvement": True}  # nature -> is_new_build
 MIN_SURFACE_M2 = 9
 MIN_PRICE_EUR = 1_000
+# Kept for the price model but left out of market cells (docs/research/segmentation_study.md §4.2):
+# an estate's price is mostly land, a flat with many outbuildings is not a bare flat.
+MAX_HOUSE_LAND_M2 = 5_000
+MAX_OUTBUILDINGS = 2
 
 
 def _decimal(column: str) -> str:
@@ -85,10 +89,13 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
                 min(valeur_fonciere) AS price,
                 max(valeur_fonciere) AS price_max,
                 count(DISTINCT code_commune) AS n_communes,
-                -- rows repeat per parcel/lot: count distinct dwellings, not rows
+                -- rows repeat per parcel/lot: count distinct dwellings, not rows. Flats are told
+                -- apart by their lot too (two identical flats sold together are two dwellings);
+                -- a house has no lot and repeats once per parcel.
                 count(DISTINCT CASE WHEN type_local IN ({dwellings})
-                      THEN concat_ws('|', type_local, surface_reelle_bati,
-                                     nombre_pieces_principales) END) AS n_dwellings,
+                      THEN concat_ws('|', type_local, surface_reelle_bati, nombre_pieces_principales,
+                                     CASE WHEN type_local = 'Appartement' THEN nullif(lot_1, '') END)
+                      END) AS n_dwellings,
                 count(*) FILTER (WHERE type_local IS NOT NULL
                                  AND type_local NOT IN ({dwellings}, 'Dépendance')) AS n_other_premises,
                 count(DISTINCT CASE WHEN type_local = 'Dépendance'
@@ -129,7 +136,9 @@ def build_sales(con: duckdb.DuckDBPyConnection) -> None:
             coalesce(s.longitude, cp.longitude) AS longitude,
             coalesce(s.latitude, cp.latitude) AS latitude,
             CASE WHEN s.section IS NOT NULL THEN 'section'
-                 WHEN cp.code IS NOT NULL THEN 'commune' END AS location_precision
+                 WHEN cp.code IS NOT NULL THEN 'commune' END AS location_precision,
+            CASE WHEN m.property_type = 'Maison' AND coalesce(l.land_m2, 0) > {MAX_HOUSE_LAND_M2} THEN 'large_land'
+                 WHEN m.n_dependencies > {MAX_OUTBUILDINGS} THEN 'outbuildings' END AS market_excluded
         FROM per_mutation m
         LEFT JOIN commune_map c ON c.code = m.code_commune_raw
         LEFT JOIN land l USING (id_mutation)

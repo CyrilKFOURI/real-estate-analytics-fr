@@ -63,6 +63,16 @@ ROWS = [
     # new build (VEFA): kept, flagged
     row(260000, "01001", "Appartement", 60, rooms=3, nature="Vente en l'état futur d'achèvement",
         carrez=58.4, lot="12", lots=2),
+    # two identical flats (different lots) sold together -> dropped, not one flat at double price
+    row(333333, "01001", "Appartement", 45, lot="3", plan="5"),
+    row(333333, "01001", "Appartement", 45, lot="4", plan="5"),
+    # house on a large estate -> kept for the model, out of market cells
+    row(444444, "01001", "Maison", 120, rooms=5, plan="9", culture="T", land=8000),
+    # flat sold with 3 outbuildings -> kept for the model, out of market cells
+    row(222222, "01001", "Appartement", 40, lot="20", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="21", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="22", plan="6"),
+    row(222222, "01001", "Dépendance", None, lot="23", plan="6"),
 ]
 
 
@@ -97,8 +107,25 @@ def sales(con) -> dict[int, tuple]:
 
 
 def test_kept_sales(con):
-    assert set(sales(con)) == {200000, 300000, 500000, 150000, 250000, 260000}
-    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 6
+    assert set(sales(con)) == {200000, 300000, 500000, 150000, 250000, 260000, 444444, 222222}
+    assert con.execute("SELECT count(*) FROM dvf_sales").fetchone()[0] == 8
+
+
+def test_identical_flats_sold_together_are_dropped(con):
+    assert 333333 not in sales(con)
+
+
+def test_same_flat_on_two_parcels_kept(con):
+    assert 200000 in sales(con)
+
+
+def test_large_land_house_flagged(con):
+    assert _sale(con, 444444, "market_excluded") == ("large_land",)
+
+
+def test_many_outbuildings_flagged(con):
+    assert _sale(con, 222222, "market_excluded") == ("outbuildings",)
+    assert _sale(con, 200000, "market_excluded") == (None,)
 
 
 def _sale(con, price, columns):
