@@ -4,7 +4,14 @@
     {
       "name": "app-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--web", "--port", "8081"],
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8081",
+        "--clear"
+      ],
       "cwd": "apps/app",
       "port": 8081
     }

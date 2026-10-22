@@ -243,7 +243,8 @@ def build_oll_kpis(con: duckdb.DuckDBPyConnection, directory: Path, zones_csv: P
                     WHEN nombre_pieces_homogene LIKE 'Maison%' THEN 'house'
                     WHEN Type_habitat = 'Appartement' THEN 'apartment'
                     WHEN Type_habitat = 'Maison' THEN 'house' ELSE 'all' END AS property_type,
-               coalesce(nullif(replace(regexp_extract(nombre_pieces_homogene, '([0-9][-0-9]*P\\+?)$'), 'P', ''), ''),
+               coalesce(nullif(replace(regexp_extract(regexp_replace(nombre_pieces_homogene, 'P et plus$', 'P+'),
+                                                      '([0-9][-0-9]*P\\+?)$'), 'P', ''), ''),
                         'all') AS rooms,
                CASE left(coalesce(epoque_construction_homogene, ''), 1)
                     WHEN '1' THEN '<1946' WHEN '2' THEN '1946-1970' WHEN '3' THEN '1971-1990'
@@ -257,6 +258,9 @@ def build_oll_kpis(con: duckdb.DuckDBPyConnection, directory: Path, zones_csv: P
                {_num("surface_moyenne")} AS surface_mean,
                TRY_CAST(nombre_observations AS INTEGER) AS n_obs
         FROM oll_raw WHERE NOT ({skip}) AND {_num("loyer_median")} IS NOT NULL
+        -- some files repeat a cell (with and without Type_habitat filled in): keep the best-observed row
+        QUALIFY row_number() OVER (PARTITION BY agglo_code, year, property_type, rooms, period_built, tenancy
+                                   ORDER BY n_obs DESC NULLS LAST, rent_m2_median) = 1
         """
     )
     con.execute(

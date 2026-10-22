@@ -287,6 +287,9 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
     extras, oll_series = _extras(con)
     derived = _latest_and_typical(con, min_sales)
     neighbours = _neighbours(con, min_sales)
+    from . import dashboard  # dashboard reuses this module's helpers
+
+    curves = dashboard.rent_curves(con)
     meta = _meta(con, run_id)
     names = {
         code: (name, departement, region)
@@ -298,12 +301,21 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
 
     staging = serve_dir.with_name(serve_dir.name + ".next")
     shutil.rmtree(staging, ignore_errors=True)
+    departement_names = dashboard._departement_names()
+    departement_regions = dict(con.execute(
+        "SELECT departement, min(region) FROM commune_map WHERE departement IS NOT NULL GROUP BY departement"
+    ).fetchall())
     index = []
     sizes = []
     for level, code in sorted(prices):
         name, departement, region = names.get(code, (None, None, None))
         if level == "france":
             name = "France"
+        elif level == "departement":
+            name = departement_names.get(code, name)
+            region = departement_regions.get(code)
+        elif level == "region":
+            name = dashboard.REGION_NAMES.get(code, name)
         doc = {
             "schema_version": SCHEMA_VERSION,
             "code": code,
@@ -319,6 +331,7 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
             "socio": socio.get((level, code)),
             **derived.get((level, code), {}),
             **({"neighbours": neighbours[(level, code)]} if (level, code) in neighbours else {}),
+            **({"rent_curve": curves[(level, code)]} if (level, code) in curves else {}),
             **extras.get((level, code), {}),
         }
         target = staging / "geo" / level / f"{code}.json"
@@ -346,11 +359,13 @@ def publish(con: duckdb.DuckDBPyConnection, min_sales: int, run_id: str,
         target.write_text(json.dumps(allow_nan=False, obj=block, ensure_ascii=False, separators=(",", ":"), default=float),
                           encoding="utf-8")
     ranking = _write_ranking(con, staging, run_id)
+    dashboard_files = dashboard.write(con, staging, min_sales)
     have_contours = all((mapdata.CONTOURS_DIR / f"{n}.geojson.gz").exists() for n in mapdata.LAYERS.values())
     map_layer = mapdata.write_map_layer(con, staging, min_sales) if have_contours else "no contours"
     shutil.rmtree(serve_dir, ignore_errors=True)
     staging.rename(serve_dir)
     return {"files": len(sizes), "indexed": len(index), "ranked": ranking, "map": map_layer,
+            "dashboard": dashboard_files,
             "avg_kb": round(sum(sizes) / max(len(sizes), 1) / 1024, 1),
             "max_kb": round(max(sizes, default=0) / 1024, 1)}
 

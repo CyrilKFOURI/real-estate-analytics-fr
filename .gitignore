@@ -8,7 +8,7 @@ Thumbs.db
 node_modules/
 __pycache__/
 .venv/
-data/
+/data/
 *.parquet
 
 # web export (npx expo export)

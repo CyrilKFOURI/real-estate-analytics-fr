@@ -192,3 +192,12 @@ def test_implausible_yield_excluded(con):
     con.execute("UPDATE kpi_price SET median_price_m2 = 500 WHERE geo_code = '49007' AND rooms_bucket = 'all'")
     rents.build_yield_kpis(con)
     assert _yield(con, "commune", "49007")["status"] == "excluded"
+
+
+def test_rent_at_shared_fixture():
+    # the app's rentAt (apps/app/src/data/rent.ts) is tested against the same file
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "rent_at_cases.json").read_text())
+    assert tuple(fixture["surface_bounds"]) == rents.SURFACE_BOUNDS
+    for case in fixture["cases"]:
+        got = rents.rent_at(case["ref_rent_m2"], case["ref_surface"], case["slope"], case["surface_m2"])
+        assert got == pytest.approx(case["rent_m2"], abs=1e-6)
