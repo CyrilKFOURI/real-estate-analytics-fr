@@ -20,7 +20,7 @@
 /* sidebar */
 .cy-sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); min-height: 0; }
 .cy-brand { display: flex; align-items: center; gap: 10px; height: var(--topbar); padding: 0 14px; border-bottom: 1px solid var(--line); }
-.cy-brand-mark { width: 28px; height: 22px; background: var(--ink-1); -webkit-mask: url('/brand/logo-mark.png') center / contain no-repeat; mask: url('/brand/logo-mark.png') center / contain no-repeat; }
+.cy-brand-mark { width: 28px; height: 22px; background: var(--ink-1); -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
 .cy-brand-name { font: 400 15px/1 var(--font-brand); letter-spacing: 0.14em; }
 .cy-nav { display: flex; flex-direction: column; padding: 8px 0; overflow-y: auto; }
 .cy-nav-group { padding: 12px 14px 4px; font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
