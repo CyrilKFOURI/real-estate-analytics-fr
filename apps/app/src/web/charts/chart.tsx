@@ -14,6 +14,8 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { type CSSProperties, useEffect, useRef } from 'react';
 
+import { useDark } from '../hooks/use-dark';
+
 echarts.use([
   LineChart, BarChart, ScatterChart, BoxplotChart, CustomChart, GridComponent, TooltipComponent, LegendComponent,
   MarkLineComponent, MarkAreaComponent, MarkPointComponent, DataZoomComponent, CanvasRenderer,
@@ -90,9 +92,11 @@ export const Chart = ({ option, height = 220, style, onClick, ariaLabel }: Chart
     };
   }, []);
 
+  // colours come from the theme tokens: redraw when the theme changes
+  const dark = useDark();
   useEffect(() => {
     chart.current?.setOption({ ...baseOption(), ...option }, { notMerge: true });
-  }, [option]);
+  }, [option, dark]);
 
   return <div ref={ref} role="img" aria-label={ariaLabel} style={{ width: '100%', height, ...style }} />;
 };

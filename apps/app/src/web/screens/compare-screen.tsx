@@ -26,16 +26,13 @@ import { EmptyState, InfoTip, Panel } from '../components/panel';
 import { PlaceSearch } from '../components/place-search';
 import { NavLink, Shell } from '../components/shell';
 import { MapCanvas } from '../maps/map-canvas';
+import { useDark } from '../hooks/use-dark';
 import type { ScreenProps } from '../screen-props';
 
 const MAX = 4;
 
 type Row = { label: string; info?: string; value: (p: Place) => number | null | undefined; format: (v: number | null | undefined) => ReactNode };
 type Group = { title: string; rows: Row[] };
-
-const prefersDark = () =>
-  document.documentElement.dataset.theme === 'dark' ||
-  (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
 export default function CompareScreen({ filters, params, onFilters, onParams, navigate }: ScreenProps) {
   const refs = parsePlaces(params.places).slice(0, MAX);
@@ -44,7 +41,7 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
   const segment = { propertyType: type, rooms: filters.size };
   const [loaded, setLoaded] = useState<Record<string, Place | null>>({});
   const [points, setPoints] = useState<CommunePoint[] | null>(null);
-  const [dark] = useState(prefersDark);
+  const dark = useDark();
 
   useEffect(() => {
     let current = true;
@@ -63,6 +60,8 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
   }, []);
 
   const places = keys.map((k) => loaded[k]).filter((p): p is Place => Boolean(p));
+  // one colour per place in the URL list, whatever is still loading or failed
+  const colorOf = (p: Place) => SERIES_COLORS[keys.indexOf(`${p.level}:${p.code}`) % SERIES_COLORS.length];
   const setPlaces = (next: string[]) => onParams({ places: next.length ? next.join(',') : undefined });
 
   const year = (p: Place) => {
@@ -116,7 +115,7 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
   const mapPoints = pts.length
     ? { type: 'FeatureCollection' as const, features: pts.map(({ p, i, pt }) => ({
         type: 'Feature' as const, geometry: { type: 'Point', coordinates: [pt!.lon, pt!.lat] },
-        properties: { code: p.code, level: p.level, name: p.name, _fill: SERIES_COLORS[i], _r: 9 } })) }
+        properties: { code: p.code, level: p.level, name: p.name, _fill: colorOf(p), _r: 9 } })) }
     : null;
   const bounds = pts.length
     ? ([[Math.min(...pts.map((x) => x.pt!.lon)) - 0.3, Math.min(...pts.map((x) => x.pt!.lat)) - 0.3],
@@ -153,8 +152,8 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
                     <tr>
                       <th>Indicateur</th>
                       {places.map((p, i) => (
-                        <th key={p.code} className="num">
-                          <i style={{ background: SERIES_COLORS[i] }} />
+                        <th key={`${p.level}:${p.code}`} className="num">
+                          <i style={{ background: colorOf(p) }} />
                           <NavLink href={`/place/${p.level}/${p.code}?type=${type}&size=${filters.size}`} navigate={navigate}>{p.name ?? p.code}</NavLink>
                         </th>
                       ))}
@@ -170,7 +169,7 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
                           <tr key={row.label}>
                             <td className="ink-2">{row.label} {row.info && <InfoTip k={row.info} />}</td>
                             {values.map((v, i) => (
-                              <td key={places[i].code} className={`num${best === i ? ' cy-best' : ''}`}>{row.format(v)}</td>
+                              <td key={`${places[i].level}:${places[i].code}`} className={`num${best === i ? ' cy-best' : ''}`}>{row.format(v)}</td>
                             ))}
                           </tr>
                         );
@@ -188,7 +187,7 @@ export default function CompareScreen({ filters, params, onFilters, onParams, na
                   legend: { top: 0, left: 8 },
                   xAxis: { type: 'category', data: periods, boundaryGap: false, ...axisStyle() },
                   yAxis: { type: 'value', scale: true, ...axisStyle() },
-                  series: curves.map((c, i) => ({ name: c.name, type: 'line', connectNulls: true, symbolSize: 4, color: SERIES_COLORS[i],
+                  series: curves.map((c, i) => ({ name: c.name, type: 'line', connectNulls: true, symbolSize: 4, color: colorOf(places[i]),
                     data: periods.map((per) => c.points.find((x) => x.period === per)?.median ?? null) })),
                 }} />
             </Panel>

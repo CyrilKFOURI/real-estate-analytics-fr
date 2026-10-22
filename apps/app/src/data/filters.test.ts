@@ -27,3 +27,9 @@ test('invalid values from old links are normalised, never a blank screen', () =>
   // new builds exist for all sizes only
   assert.equal(parseFilters({ condition: 'new', size: '3' }).size, 'all');
 });
+
+test('a place code that cannot be one, or an unknown level, falls back to France', () => {
+  assert.deepEqual([parseFilters({ level: 'commune', code: '../meta' }).level, parseFilters({ level: 'commune', code: '../meta' }).code], ['france', 'FR']);
+  assert.equal(parseFilters({ level: 'nowhere', code: '49007' }).code, 'FR');
+  assert.deepEqual([parseFilters({ level: 'departement', code: '2A' }).code, parseFilters({ level: 'commune', code: '97411' }).code], ['2A', '97411']);
+});

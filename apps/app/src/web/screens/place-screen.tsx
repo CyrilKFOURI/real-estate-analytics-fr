@@ -28,6 +28,7 @@ import { EmptyState, ErrorPanel, InfoTip, Panel, ReliabilityBadge, Ribbon } from
 import { usePlace } from '../components/place-detail';
 import { NavLink, Shell } from '../components/shell';
 import { MapCanvas } from '../maps/map-canvas';
+import { useDark } from '../hooks/use-dark';
 import type { ScreenProps } from '../screen-props';
 
 const LEVEL_LABELS: Record<GeoLevel, string> = {
@@ -72,10 +73,6 @@ const Kv = ({ rows }: { rows: [string, string, string?][] }) => (
     </tbody>
   </table>
 );
-
-const prefersDark = () =>
-  document.documentElement.dataset.theme === 'dark' ||
-  (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
 export default function PlaceScreen({ filters, onFilters, navigate }: ScreenProps) {
   const level = filters.level;
@@ -130,7 +127,7 @@ const PlaceDashboard = ({
   const [parents, setParents] = useState<Place[]>([]);
   const [oll, setOll] = useState<Oll | null>(null);
   const [points, setPoints] = useState<CommunePoint[] | null>(null);
-  const [dark] = useState(prefersDark);
+  const dark = useDark();
 
   useEffect(() => {
     let current = true;
@@ -146,7 +143,7 @@ const PlaceDashboard = ({
     if (place.neighbours?.length) {
       loadCommunePoints().then(
         (table) => current && setPoints(table.rows),
-        () => undefined,
+        () => current && setPoints([]),
       );
     }
     return () => {
@@ -1024,11 +1021,11 @@ const PlaceDashboard = ({
         {/* ---------------- Voisins (communes and arrondissements only) */}
         {neighbours.length > 0 && (
           <>
-            <Panel id="voisins" span={7} title={`Communes voisines · ${typeLabel}`} flush>
+            <Panel id="voisins" span={7} title={`Communes voisines · ${typeLabel} toutes tailles`} flush>
               <DataTable
                 rows={neighbours}
                 rowKey={(r) => r.code}
-                onRowClick={(r) => navigate(`/place/${r.pt?.level ?? place.level}/${r.code}?type=${type}`)}
+                onRowClick={(r) => navigate(`/place/${r.pt?.level ?? place.level}/${r.code}?type=${type}&size=${size}`)}
                 columns={[
                   { key: 'name', label: 'Commune', render: (r) => r.name },
                   {
@@ -1079,12 +1076,12 @@ const PlaceDashboard = ({
                     dark={dark}
                     bounds={miniBounds}
                     onHover={() => undefined}
-                    onClick={(p) => p.code !== place.code && navigate(`/place/${String(p.level ?? place.level)}/${String(p.code)}?type=${type}`)}
+                    onClick={(p) => p.code !== place.code && navigate(`/place/${String(p.level ?? place.level)}/${String(p.code)}?type=${type}&size=${size}`)}
                     style={{ position: 'absolute', inset: 0 }}
                   />
                 </div>
               ) : (
-                <EmptyState>Chargement…</EmptyState>
+                <EmptyState>{points ? 'Pas de point publié pour ces communes.' : 'Chargement…'}</EmptyState>
               )}
               <div className="cy-note" style={{ padding: '6px 14px' }}>
                 Point foncé : {name}. Couleur des voisins : prix au m² (vert = moins cher).

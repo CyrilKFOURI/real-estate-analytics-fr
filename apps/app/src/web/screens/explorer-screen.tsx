@@ -29,6 +29,9 @@ import type { ScreenProps } from '../screen-props';
 type Scope = 'regions' | 'departements' | string; // a département code = its communes
 const PAGE = 200;
 
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const fmt = (base: string) => METRICS.find((m) => m.base === base)?.format ?? ((v: number) => String(v));
 const tone = (v: number | null) => (v == null ? undefined : v >= 0 ? 'pos' : 'neg');
@@ -88,7 +91,10 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
   const [error, setError] = useState<{ scope: Scope; message: string } | null>(null);
   const [departements, setDepartements] = useState<{ code: string; name: string }[]>([]);
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<ExplorerRow | null>(null);
+  // a selection belongs to the table it was made in (the back button can change the table)
+  const [selection, setSelection] = useState<{ scope: Scope; row: ExplorerRow } | null>(null);
+  const selected = selection?.scope === scope ? selection.row : null;
+  const setSelected = (row: ExplorerRow | null) => setSelection(row ? { scope, row } : null);
   const [limit, setLimit] = useState(PAGE);
   // bounds belong to one indicator: switching indicator starts with none
   const [bounds, setBounds] = useState({ metric: '', min: '', max: '' });
@@ -261,7 +267,7 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
                       trigger: 'item',
                       formatter: (p: { dataIndex: number }) => {
                         const r = scatter[p.dataIndex];
-                        return `<b>${r.name}</b><br/>${formatEurosPerM2(r.median_price_m2)} · ${formatPercent(r.gross_yield)}<br/>${formatCount(r.n_sales)} ventes`;
+                        return `<b>${escapeHtml(r.name ?? r.code)}</b><br/>${formatEurosPerM2(r.median_price_m2)} · ${formatPercent(r.gross_yield)}<br/>${formatCount(r.n_sales)} ventes`;
                       },
                     },
                     xAxis: { type: 'value', name: '€/m²', nameLocation: 'middle', nameGap: 22, scale: true, ...axisStyle() },

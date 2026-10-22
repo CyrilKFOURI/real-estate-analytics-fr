@@ -20,6 +20,7 @@ import { EmptyState, Panel, Ribbon } from '../components/panel';
 import { PlaceSearch } from '../components/place-search';
 import { NavLink, Shell } from '../components/shell';
 import { type Feature, MapCanvas, METROPOLE } from '../maps/map-canvas';
+import { useDark } from '../hooks/use-dark';
 import type { ScreenProps } from '../screen-props';
 
 const INTRO_KEY = 'cy-intro-dismissed';
@@ -33,10 +34,6 @@ const readIntro = () => {
     return true;
   }
 };
-const prefersDark = () =>
-  document.documentElement.dataset.theme === 'dark' ||
-  (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
 export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps) {
   const type: DwellingType = filters.type === 'house' ? 'house' : 'apartment';
   const metric = METRICS.find((m) => m.base === filters.metric) ?? METRICS[0];
@@ -47,7 +44,7 @@ export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps
   const [deps, setDeps] = useState<ExplorerRow[] | null>(null);
   const [communes, setCommunes] = useState<CommunePoint[] | null>(null);
   const [intro, setIntro] = useState(readIntro);
-  const [dark] = useState(prefersDark);
+  const dark = useDark();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +53,7 @@ export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps
     loadMapLayer('departements.geojson').then(setLayer, fail);
     loadBreaks().then(setBreaks, fail);
     loadTable<ExplorerRow>('explorer/departements.json').then((t) => setDeps(t.rows), fail);
-    loadCommunePoints().then((t) => setCommunes(t.rows), () => undefined);
+    loadCommunePoints().then((t) => setCommunes(t.rows), () => setCommunes([]));
   }, []);
 
   const segment = { propertyType: type, rooms: filters.size };
@@ -76,6 +73,9 @@ export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps
   const pField = POINT_FIELD[metric.base];
   const comRows = pField ? (communes ?? []).filter((c) => c.type === type && c.n >= RELIABLE && c[pField] != null) : [];
   const fmt = metric.format;
+  // commune points are published for all sizes only
+  const allSizesNote = filters.size === 'all' ? '' : ' (toutes tailles)';
+  const comLabel = communes === null ? 'Chargement…' : 'Pas de communes classées.';
   const curve = (t: DwellingType) => (france ? halfYearSeries(france.prices, { propertyType: t, rooms: 'all' }) : []);
   const flats = curve('apartment');
   const houses = curve('house');
@@ -141,6 +141,7 @@ export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps
         </Panel>
         <Panel span={5} title={`${metric.label} par département`} info={metric.base} flush
           tools={<NavLink href={`/map?type=${type}&metric=${metric.base}`} navigate={navigate}>Carte complète →</NavLink>}>
+          {metric.communesOnly && <div className="cy-note" style={{ padding: '6px 14px' }}>Indicateur calculé par commune : ouvrez la carte complète et cliquez un département.</div>}
           <div style={{ position: 'relative', height: 380 }}>
             {polygons ? (
               <MapCanvas polygons={polygons as never} points={null} dark={dark} bounds={METROPOLE as never} style={{ position: 'absolute', inset: 0 }}
@@ -173,11 +174,11 @@ export default function HomeScreen({ filters, onFilters, navigate }: ScreenProps
         </Panel>
         <Panel span={3} title={`Départements ${bestWord(false)}`} flush>{depRows.length ? top(depList(true), 'Département') : <EmptyState>—</EmptyState>}</Panel>
         <Panel span={3} title={`Départements ${worstWord(false)}`} flush>{depRows.length ? top(depList(false), 'Département') : <EmptyState>—</EmptyState>}</Panel>
-        <Panel span={3} title={`Communes ${bestWord(true)}`} flush>
-          {pField ? (comRows.length ? top(comList(true), 'Commune') : <EmptyState>Chargement…</EmptyState>) : <EmptyState>Classement des communes : prix, rentabilité ou cash-flow.</EmptyState>}
+        <Panel span={3} title={`Communes ${bestWord(true)}${allSizesNote}`} flush>
+          {pField ? (comRows.length ? top(comList(true), 'Commune') : <EmptyState>{comLabel}</EmptyState>) : <EmptyState>Classement des communes : prix, rentabilité ou cash-flow.</EmptyState>}
         </Panel>
-        <Panel span={3} title={`Communes ${worstWord(true)}`} flush>
-          {pField ? (comRows.length ? top(comList(false), 'Commune') : <EmptyState>Chargement…</EmptyState>) : <EmptyState>—</EmptyState>}
+        <Panel span={3} title={`Communes ${worstWord(true)}${allSizesNote}`} flush>
+          {pField ? (comRows.length ? top(comList(false), 'Commune') : <EmptyState>{comLabel}</EmptyState>) : <EmptyState>—</EmptyState>}
         </Panel>
         <Panel span={12} title="À propos des chiffres">
           <div className="cy-note">

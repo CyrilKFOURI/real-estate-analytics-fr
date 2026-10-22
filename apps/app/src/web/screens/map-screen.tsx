@@ -16,6 +16,7 @@ import { Panel } from '../components/panel';
 import { PlaceDetail } from '../components/place-detail';
 import { Shell } from '../components/shell';
 import { boundsOf, type Feature, type FeatureCollection, MapCanvas, METROPOLE } from '../maps/map-canvas';
+import { useDark } from '../hooks/use-dark';
 import type { ScreenProps } from '../screen-props';
 
 type Mode = 'choropleth' | 'points';
@@ -35,10 +36,6 @@ const OVERSEAS: { label: string; bounds: [[number, number], [number, number]] }[
   { label: 'La Réunion', bounds: [[55.2, -21.4], [55.85, -20.85]] },
   { label: 'Mayotte', bounds: [[44.95, -13.05], [45.35, -12.6]] },
 ];
-
-const prefersDark = () =>
-  document.documentElement.dataset.theme === 'dark' ||
-  (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
 const fmt = (base: string) => METRICS.find((m) => m.base === base)?.format ?? ((v: number) => String(v));
 
@@ -62,13 +59,15 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
   const [hover, setHover] = useState<{ props: Record<string, unknown>; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<{ level: GeoLevel; code: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [bounds, setBounds] = useState<[[number, number], [number, number]] | null>(null);
-  const [dark] = useState(prefersDark);
+  // a framing belongs to the territory it was set for: going back to France (button or browser) reframes France
+  const [framing, setFraming] = useState<{ dep: string | null; bounds: [[number, number], [number, number]] } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const dark = useDark();
 
   useEffect(() => {
     loadMapLayer('departements.geojson').then(setDepartements, (e: Error) => setError(e.message));
     loadBreaks().then(setBreaks, (e: Error) => setError(e.message));
-  }, []);
+  }, [attempt]);
   useEffect(() => {
     if (!dep) {
       return;
@@ -78,7 +77,7 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
       (layer) => {
         if (current) {
           setCommunes({ dep, layer });
-          setBounds(boundsOf(layer as FeatureCollection) as never);
+          setFraming({ dep, bounds: boundsOf(layer as FeatureCollection) as never });
         }
       },
       (e: Error) => current && setError(e.message),
@@ -86,14 +85,14 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
     return () => {
       current = false;
     };
-  }, [dep]);
+  }, [dep, attempt]);
   useEffect(() => {
     if (mode !== 'points') {
       return;
     }
     loadCommunePoints().then((t) => setPoints(t.rows), (e: Error) => setError(e.message));
     loadPointBreaks().then(setPointBreaks, () => setPointBreaks({}));
-  }, [mode]);
+  }, [mode, attempt]);
   useEffect(() => {
     if (mode !== 'points' || !dep) {
       return;
@@ -222,7 +221,7 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
             <FilterField label="Territoire">
               <button type="button" className="cy-button ghost" onClick={() => {
                 setSelected(null);
-                setBounds(METROPOLE as never);
+                setFraming(null);
                 onFilters({ level: 'france', code: 'FR' });
               }}>
                 ← France entière
@@ -242,7 +241,7 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
             <>
               {OVERSEAS.map((o) => (
                 <button key={o.label} type="button" className="cy-button ghost" style={{ height: 22, padding: '0 6px' }}
-                  onClick={() => setBounds(o.bounds)}>
+                  onClick={() => setFraming({ dep, bounds: o.bounds })}>
                   {o.label}
                 </button>
               ))}
@@ -253,20 +252,29 @@ export default function MapScreen({ filters, params, onFilters, onParams, naviga
               polygons={polygons}
               points={pointCollection}
               dark={dark}
-              bounds={bounds as never}
+              bounds={(framing?.dep === dep ? framing.bounds : dep ? null : METROPOLE) as never}
               onHover={(props, position) => setHover(props && position ? { props, ...position } : null)}
               onClick={onClick}
               onZoom={setZoom}
               style={{ position: 'absolute', inset: 0 }}
             />
             {hover && <Tooltip hover={hover} type={type} metricBase={mode === 'points' ? pointMetric.base : metric.base} />}
-            {error && <div className="cy-banner" style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>{error}</div>}
+            {error && (
+              <div className="cy-banner" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', gap: 8, alignItems: 'center' }}>
+                Données de carte indisponibles ({error}).
+                <button type="button" className="cy-button ghost" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>Réessayer</button>
+              </div>
+            )}
           </div>
         </Panel>
         <div style={{ gridColumn: 'span 3', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
           <Panel title="Légende" span={12}>
             {legend.length === 0 ? (
-              <span className="cy-note">Pas assez de valeurs pour classer cet indicateur.</span>
+              <span className="cy-note">
+                {!dep && legendMetric.communesOnly
+                  ? 'Indicateur calculé par commune : cliquez un département pour le voir.'
+                  : 'Pas assez de valeurs pour classer cet indicateur.'}
+              </span>
             ) : (
               <div style={{ display: 'grid', gap: 4 }}>
                 {legend.map((item) => (

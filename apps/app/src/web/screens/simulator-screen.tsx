@@ -122,7 +122,13 @@ export default function SimulatorScreen({ filters, params, onFilters, onParams, 
         downPayment: round(price * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare, 500),
         ...overrides,
       }));
-    }, () => current && setPrefill(null));
+    }, () => {
+      // no market data: the property's own figures still apply
+      if (current) {
+        setPrefill(null);
+        setForm((f) => ({ ...f, ...overrides }));
+      }
+    });
     return () => {
       current = false;
     };

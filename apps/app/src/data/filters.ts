@@ -35,6 +35,8 @@ export const DEFAULT_FILTERS: Filters = {
 };
 
 const LEVELS: GeoLevel[] = ['france', 'region', 'departement', 'commune', 'arrondissement'];
+/** FR, a région (2 digits), a département (2A, 971…) or a commune / arrondissement (5 characters). */
+const PLACE_CODE = /^(FR|[0-9][0-9AB][0-9]{0,3})$/;
 const PERIOD = { year: /^\d{4}$/, half: /^\d{4}-H[12]$/ } as const;
 
 const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T =>
@@ -63,9 +65,13 @@ export const parseFilters = (params: Record<string, string | string[] | undefine
   const periodType = pick(get('periodType'), ['year', 'half'] as const, DEFAULT_FILTERS.periodType);
   const period = get('period');
   const size = normaliseSize(type, get('size'));
+  // a level and code pair goes into a file path: anything else than a real place code means France
+  const level = LEVELS.includes(get('level') as GeoLevel) ? (get('level') as GeoLevel) : null;
+  const code = get('code');
+  const place = level && code && PLACE_CODE.test(code) ? { level, code } : { level: DEFAULT_FILTERS.level, code: DEFAULT_FILTERS.code };
   return {
-    level: pick(get('level'), LEVELS, DEFAULT_FILTERS.level),
-    code: get('code') || DEFAULT_FILTERS.code,
+    level: place.level,
+    code: place.code,
     type,
     // new builds are published for all sizes only
     size: condition === 'new' ? 'all' : size,

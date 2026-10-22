@@ -34,6 +34,7 @@ import { EmptyState, Panel, Ribbon } from '../components/panel';
 import { PlaceSearch } from '../components/place-search';
 import { NavLink, Shell } from '../components/shell';
 import { MapCanvas } from '../maps/map-canvas';
+import { useDark } from '../hooks/use-dark';
 import type { ScreenProps } from '../screen-props';
 
 const ENERGY: EnergyClass[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
@@ -73,10 +74,6 @@ const formFrom = (params: Record<string, string>): Form => ({
   commune: params.commune ? { level: levelOf(params.commune), code: params.commune, name: params.commune } : null,
 });
 
-const prefersDark = () =>
-  document.documentElement.dataset.theme === 'dark' ||
-  (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
 const NumberInput = ({ label, unit, value, onChange }: { label: string; unit?: string; value: string; onChange: (v: string) => void }) => (
   <FilterField label={label}>
     <span className="cy-unit">
@@ -94,7 +91,7 @@ export default function PropertyScreen({ params, navigate }: ScreenProps) {
   const [oll, setOll] = useState<Oll | null>(null);
   const lastRequest = useRef(0);
   const [sections, setSections] = useState<SectionPoint[] | null>(null);
-  const [dark] = useState(prefersDark);
+  const dark = useDark();
   const set = <K extends keyof Form>(key: K) => (value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const code = estimate.value?.code_commune ?? submitted?.commune?.code ?? null;
@@ -244,7 +241,7 @@ const Analysis = ({
       price: asked, surfaceM2: surface, isNewBuild: form.isNew, agencyFees: 0, works: 0, furniture: 0, rentMonthly,
       vacancyMonths: DEFAULTS.vacancyMonths, taxeFonciereYearly: estimateTaxeFonciere(rentMonthly, market?.local_tax?.tfpb_rate),
       nonRecoverableChargesYearly: 0, pnoInsuranceYearly: DEFAULTS.pnoInsuranceYearly, managementShare: DEFAULTS.managementShare,
-      maintenanceShare: DEFAULTS.maintenanceShare, downPayment: Math.round(asked * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare),
+      maintenanceShare: DEFAULTS.maintenanceShare, downPayment: Math.round(asked * (1 + (form.isNew ? FR_RULES.notaryRateNew : FR_RULES.notaryRateOld)) * DEFAULTS.downPaymentShare),
       loanRate: DEFAULTS.loanRate, loanYears: DEFAULTS.loanYears, loanInsuranceRate: DEFAULTS.loanInsuranceRate, incomeMonthly: 0, existingDebtMonthly: 0,
     },
     year ? { medianPriceM2: year.median_price_m2, p25PriceM2: year.p25_price_m2, p75PriceM2: year.p75_price_m2 } : undefined,
@@ -477,7 +474,7 @@ const Analysis = ({
         <table className="cy-table">
           <tbody>
             <tr><td className="ink-2">Coût total (frais de notaire inclus)</td><td className="num">{formatEuros(deal.totalCost)}</td></tr>
-            <tr><td className="ink-2">Apport ({formatPercent(DEFAULTS.downPaymentShare)})</td><td className="num">{formatEuros(Math.round(asked * (1 + FR_RULES.notaryRateOld) * DEFAULTS.downPaymentShare))}</td></tr>
+            <tr><td className="ink-2">Apport ({formatPercent(DEFAULTS.downPaymentShare)})</td><td className="num">{formatEuros(Math.round(asked * (1 + (form.isNew ? FR_RULES.notaryRateNew : FR_RULES.notaryRateOld)) * DEFAULTS.downPaymentShare))}</td></tr>
             <tr><td className="ink-2">Mensualité ({formatPercent(DEFAULTS.loanRate)}, {DEFAULTS.loanYears} ans)</td><td className="num">{formatEuros(deal.paymentMonthly)}</td></tr>
             <tr><td className="ink-2">Cash-flow avant impôt</td><td className={`num ${deal.cashFlowMonthly >= 0 ? 'pos' : 'neg'}`}>{formatEuros(deal.cashFlowMonthly)} / mois</td></tr>
             <tr><td className="ink-2">Rentabilité brute / nette</td><td className="num">{formatPercent(deal.grossYield)} / {formatPercent(deal.netYield)}</td></tr>

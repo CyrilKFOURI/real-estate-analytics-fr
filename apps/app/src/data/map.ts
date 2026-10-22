@@ -44,7 +44,7 @@ export type Metric = {
   higherIs: string;
   /** Same value for flats and houses (area statistics). */
   areaWide?: boolean;
-  /** Not computed for départements (score is per commune). */
+  /** Not computed for départements (score and tax rate are per commune). */
   communesOnly?: boolean;
 };
 
@@ -75,7 +75,7 @@ export const METRICS: Metric[] = [
     higherIs: 'plus de croissance',
     areaWide: true,
   },
-  { base: 'tfpb_rate', label: 'Taux de taxe foncière', format: formatPercent, higherIs: 'plus taxé', areaWide: true },
+  { base: 'tfpb_rate', label: 'Taux de taxe foncière', format: formatPercent, higherIs: 'plus taxé', areaWide: true, communesOnly: true },
 ];
 
 export const metricKey = (base: MetricBase, type: 'apartment' | 'house'): string =>
