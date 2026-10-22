@@ -8,8 +8,10 @@ import * as maplibregl from 'maplibre-gl/dist/maplibre-gl-csp';
 import type { ErrorEvent, GeoJSONSource, LngLatBoundsLike, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
 import { type CSSProperties, useEffect, useRef } from 'react';
 
+import { assetUrl } from '../../data/config';
+
 // worker served as a static file (scripts/copy-maplibre-worker.js runs after npm install)
-maplibregl.setWorkerUrl(`${process.env.EXPO_BASE_URL ?? ''}/vendor/maplibre-gl-csp-worker.js`);
+maplibregl.setWorkerUrl(assetUrl('vendor/maplibre-gl-csp-worker.js'));
 
 export type FeatureCollection = { type: 'FeatureCollection'; features: Feature[] };
 export type Feature = { type: 'Feature'; geometry: unknown; properties: Record<string, unknown> };

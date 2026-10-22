@@ -12,7 +12,7 @@
 - [x] 007 Scheduled runs: `rea auto` (change detection by ETag/SHA-256, rebuild only if needed) + PowerShell script; Task Scheduler registration left to the user (docs/PIPELINE_RUN_SPEC.md §4)
 - [x] 008 Browser extension: Manifest V3, no dependency, reads the open listing on click and opens the prefilled dashboard (apps/extension)
 - [x] 015 Advanced screen filters on Explorer (budget, ranges, cash-flow sign, population, vacancy, F/G, rent control, risky out, région; design: docs/features/015-advanced-filters/spec.md)
-- [ ] 009 Expo mobile build (iOS/Android) — after 013 and 014
+- [x] 009 Mobile app ready to build: same DOM screens on iOS/Android, data from the published site, Cyfouri branding, eas.json (design: docs/features/009-mobile/spec.md; the signed build needs the user's Expo account)
 - [x] 010 Tax regimes (D13), IRR with resale (D14), leverage (D15), BRRRR (D16), break-even (D17)
 - [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
 - [x] 012 Property analysis dashboard: verdict + price + rent + money + risks + area for one property (design: docs/features/012-property-dashboard/spec.md; needs 004 and 011)

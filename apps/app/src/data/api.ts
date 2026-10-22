@@ -1,4 +1,5 @@
 import { cached } from './cache.ts';
+import { DATA_URL } from './config.ts';
 import { checkSchema } from './select.ts';
 import type {
   DwellingType,
@@ -14,9 +15,6 @@ import type {
   RoomsBucket,
   YieldRow,
 } from './types.ts';
-
-// On web the KPI files are served from public/data. A native build will point this at the CDN.
-const DATA_URL = process.env.EXPO_PUBLIC_DATA_URL ?? '/data';
 
 type RawIndex = { fields: string[]; places: unknown[][] };
 type RawPlace = Omit<Place, 'prices' | 'yields'> & {
