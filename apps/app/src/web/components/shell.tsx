@@ -1,8 +1,9 @@
 // Workbench shell: sidebar with the Cyfouri brand and navigation, top bar, content area.
 // Screens are DOM components; navigation goes back to the router through the async `navigate` action
 // so the same code also works inside a native webview later.
-import { type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 
+import { assetUrl } from '../../data/config';
 import '../styles/tokens.css';
 import '../styles/base.css';
 
@@ -104,7 +105,8 @@ export const Shell = ({ active, title, crumbs, tools, filters, navigate, childre
     <div className="cy-app">
       <aside className="cy-sidebar">
         <NavLink href="/" navigate={navigate} className="cy-brand">
-          <span className="cy-brand-mark" aria-hidden />
+          {/* the logo url follows the site base path (GitHub Pages sub-path, native site URL) */}
+          <span className="cy-brand-mark" aria-hidden style={{ '--logo': `url(${assetUrl('brand/logo-mark.png')})` } as CSSProperties} />
           <span className="cy-brand-name">CYFOURI</span>
         </NavLink>
         <nav className="cy-nav" aria-label="Navigation principale">

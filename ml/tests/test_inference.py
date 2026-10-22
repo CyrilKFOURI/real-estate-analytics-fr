@@ -16,6 +16,9 @@ def test_package_layout(model_folder):
         assert (model_folder / name).exists(), name
     card = (model_folder / "README.md").read_text(encoding="utf-8")
     assert card.startswith("---\nlanguage: fr") and "library_name: lightgbm" in card
+    # ready to publish: a licence, the data attribution and its conditions, no "internal" status
+    assert "\nlicense: mit\n" in card and "Licence Ouverte" in card and "réidentification" in card
+    assert "not published" not in card
 
 
 def test_folder_runs_standalone(model_folder, monkeypatch):
