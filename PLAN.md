@@ -11,6 +11,7 @@
 - [x] 006 INSEE + DPE + REI + rent control + market score: M11–M17 all done
 - [x] 007 Scheduled runs: `rea auto` (change detection by ETag/SHA-256, rebuild only if needed) + PowerShell script; Task Scheduler registration left to the user (docs/PIPELINE_RUN_SPEC.md §4)
 - [x] 008 Browser extension: Manifest V3, no dependency, reads the open listing on click and opens the prefilled dashboard (apps/extension)
+- [x] 015 Advanced screen filters on Explorer (budget, ranges, cash-flow sign, population, vacancy, F/G, rent control, risky out, région; design: docs/features/015-advanced-filters/spec.md)
 - [ ] 009 Expo mobile build (iOS/Android) — after 013 and 014
 - [x] 010 Tax regimes (D13), IRR with resale (D14), leverage (D15), BRRRR (D16), break-even (D17)
 - [x] 011 Price check ML: keep land/lots/VEFA/coordinates in clean sales, hedonic baseline vs LightGBM quantiles, SHAP explanations, comparables, /estimate API (design: docs/features/011-price-check-ml/spec.md)
