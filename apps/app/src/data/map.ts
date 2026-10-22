@@ -1,9 +1,8 @@
 // Choropleth map data (docs/features/005-map/spec.md): GeoJSON layers written by the pipeline's
 // mapdata stage, metrics, quintile classes and colours.
 import { cached } from './cache.ts';
+import { DATA_URL } from './config.ts';
 import { formatEurosPerM2, formatPercent, formatSignedPercent } from './format.ts';
-
-const DATA_URL = process.env.EXPO_PUBLIC_DATA_URL ?? '/data';
 
 // a dev server or static host answers a missing file with the app page (HTML, status 200)
 const isHtml = (response: Response) => (response.headers.get('content-type') ?? '').includes('text/html');
