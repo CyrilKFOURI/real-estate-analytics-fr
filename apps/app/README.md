@@ -20,7 +20,9 @@ npx expo lint
 
 ## Mobile app
 The phone has no local server for the KPI files: set `EXPO_PUBLIC_SITE_URL` to the published web export
-(it serves `data/` and `vendor/`), in `.env` for development and in `eas.json` for builds.
+(it serves `data/` and `vendor/`): in `.env` for development, and as an EAS environment variable for builds
+(`eas env:create --name EXPO_PUBLIC_SITE_URL --value https://<your-site>`). Use only a site you own: the app
+loads the map worker script from it.
 ```bash
 npx expo start                                   # Expo Go / development build
 npm install -g eas-cli && eas login              # your Expo account

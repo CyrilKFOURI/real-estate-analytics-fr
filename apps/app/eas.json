@@ -4,13 +4,9 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "ios": { "simulator": true },
-      "env": { "EXPO_PUBLIC_SITE_URL": "https://YOUR-GITHUB-USER.github.io/cyfouri" }
+      "ios": { "simulator": true }
     },
-    "production": {
-      "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_SITE_URL": "https://YOUR-GITHUB-USER.github.io/cyfouri" }
-    }
+    "production": { "autoIncrement": true }
   },
   "submit": { "production": {} }
 }
