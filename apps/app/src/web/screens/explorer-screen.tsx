@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 
 import { loadTable } from '../../data/api';
 import { catalogueEntry } from '../../data/catalogue';
+import { activeCount, applyScreenFilters, parseScreenFilters } from '../../data/screen-filters';
 import { EXPLORER_METRIC, type ExplorerRow, filterRows, histogram, parseBound, PERCENT_METRICS, type Ranges, sortRows, toCsv } from '../../data/explorer';
 import {
   formatCount,
@@ -23,6 +24,7 @@ import { FilterBar, FilterField, Segmented, Select } from '../components/control
 import { type Column, DataTable } from '../components/data-table';
 import { EmptyState, ErrorPanel, Panel, ReliabilityBadge, Ribbon } from '../components/panel';
 import { PlaceDetail } from '../components/place-detail';
+import { ScreenFilterPanel } from '../components/screen-filter-panel';
 import { NavLink, Shell } from '../components/shell';
 import type { ScreenProps } from '../screen-props';
 
@@ -90,6 +92,8 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
   const [data, setData] = useState<{ scope: Scope; rows: ExplorerRow[]; period: string | null } | null>(null);
   const [error, setError] = useState<{ scope: Scope; message: string } | null>(null);
   const [departements, setDepartements] = useState<{ code: string; name: string }[]>([]);
+  const [regions, setRegions] = useState<{ code: string; name: string }[]>([]);
+  const screen = parseScreenFilters(params);
   const [query, setQuery] = useState('');
   // a selection belongs to the table it was made in (the back button can change the table)
   const [selection, setSelection] = useState<{ scope: Scope; row: ExplorerRow } | null>(null);
@@ -116,6 +120,11 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
       table.rows.forEach((r) => seen.set(r.code, r.name));
       setDepartements([...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.code.localeCompare(b.code)));
     }, () => undefined);
+    loadTable<ExplorerRow>('explorer/regions.json').then((table) => {
+      const seen = new Map<string, string>();
+      table.rows.forEach((r) => seen.set(r.code, r.name));
+      setRegions([...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, 'fr')));
+    }, () => undefined);
   }, []);
 
   const ready = data?.scope === scope ? data : null;
@@ -126,7 +135,7 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
   const high = parseBound(max, metric.base);
   const ranges: Ranges = low != null || high != null ? { [metricField]: [low, high] } : {};
   const visible = ready
-    ? sortRows(filterRows(ready.rows, { type, size: filters.size, reliable: filters.reliable }, ranges, query), sort.key as keyof ExplorerRow, sort.dir)
+    ? sortRows(applyScreenFilters(filterRows(ready.rows, { type, size: filters.size, reliable: filters.reliable }, ranges, query), screen), sort.key as keyof ExplorerRow, sort.dir)
     : [];
   const values = visible.map((r) => num(r[metricField]));
   const known = values.filter((v): v is number => v != null).sort((a, b) => a - b);
@@ -196,6 +205,7 @@ export default function ExplorerScreen({ filters, params, onFilters, onParams, n
         <EmptyState>Chargement…</EmptyState>
       ) : (
         <div className="cy-grid">
+          <ScreenFilterPanel params={params} onParams={onParams} active={activeCount(screen)} regions={scope === 'departements' ? regions : null} />
           <Panel span={12} flush>
             <Ribbon
               items={[
