@@ -56,7 +56,7 @@ A weekly job runs `uv run rea auto` (script `pipeline/scripts/auto_update.ps1`, 
 
 Register it on the laptop (Windows Task Scheduler, Sunday 03:00), from PowerShell:
 ```powershell
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\Users\cyril\Documents\2_Projects\23_Real_Estate_App\pipeline\scripts\auto_update.ps1"'
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "<path to the repo>\pipeline\scripts\auto_update.ps1"'
 Register-ScheduledTask -TaskName "RealEstateApp-auto-update" -Action $action -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
 ```
 On the future home server: a cron/systemd timer running the same command.

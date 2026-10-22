@@ -77,7 +77,7 @@ def _model_card(result: TrainingResult, config: Config, provenance: dict) -> str
 language: fr
 library_name: lightgbm
 pipeline_tag: tabular-regression
-license: other  # to decide before publishing; training data is under Licence Ouverte / Etalab 2.0
+license: mit
 tags: [real-estate, france, dvf, price-estimation, tabular-regression, lightgbm, shap]
 model-index:
 - name: {MODEL_NAME}
@@ -97,7 +97,7 @@ characteristics and location, with an 80 % interval and an exact explanation of 
 Built to answer one question: **is the asked price of this property consistent with what the
 market has paid for similar properties nearby?**
 
-> Status: internal, not published. Version {provenance['version']}.
+> Version {provenance['version']}. Part of the Cyfouri project (French rental-investment analytics).
 
 ## What it learned from
 - **Data:** every single-dwelling residential sale in DVF (signed notarial deeds, DGFiP) from
@@ -148,7 +148,14 @@ Returns the estimate, P10–P90 bounds, a verdict (below / consistent / above) a
 - An estimate, not an appraisal. It describes what the data can see; adjust for condition.
 - Areas with few sales get wide intervals; the app shows "not enough data" there.
 - Published location averages only cover areas with at least {config.encoding.min_published_sales} sales,
-  so no individual sale price can be read back (DVF rule against re-identification).
+  and every tree leaf holds at least {config.training.params['min_data_in_leaf']} sales, so no individual sale
+  price can be read back.
+
+## Data licence and conditions
+Trained on *Demandes de valeurs foncières* (DGFiP), published on data.gouv.fr under the Licence Ouverte /
+Etalab 2.0: « Source : DGFiP, Demandes de valeurs foncières ». The DVF conditions of use apply to any
+reuse: no réidentification of the people involved in a sale, and no indexing of the data by search
+engines. This model ships aggregates only (see above); do not use it to rebuild individual sales.
 
 ## Provenance
 Code commit `{provenance['commit']}`, data run `{provenance['data_run']}`, LightGBM {provenance['lightgbm']}.
